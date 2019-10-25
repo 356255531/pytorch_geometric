@@ -8,6 +8,9 @@ alpha/
 *.egg-info/
 .coverage
 .coverage.*
+venv/
+*tmp/
+.idea/
 
 !torch_geometric/data/
 !test/data/
