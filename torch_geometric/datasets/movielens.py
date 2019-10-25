@@ -46,7 +46,7 @@ def reindex_df(users, items, interactions):
     return users, items, interactions
 
 
-def convert_2_data(users, items, ratings, emb_dim, repr_dim):
+def convert_2_data(users, items, ratings, emb_dim, repr_dim, split):
     """
     Entitiy node include (gender, occupation, genres)
 
@@ -82,6 +82,8 @@ def convert_2_data(users, items, ratings, emb_dim, repr_dim):
     row_idx, col_idx = [], []
     edge_attrs = []
 
+    rating_begin = 0
+
     print('Creating user property edges...')
     for _, row in tqdm.tqdm(users.iterrows(), total=users.shape[0]):
         gender = row['gender']
@@ -97,6 +99,7 @@ def convert_2_data(users, items, ratings, emb_dim, repr_dim):
         row_idx.append(u_nid)
         col_idx.append(occupation_nid)
         edge_attrs.append([relation_map['occupation'], -1])
+    rating_begin += 2 * users.shape[0]
 
     print('Creating item property edges...')
     for _, row in tqdm.tqdm(items.iterrows(), total=items.shape[0]):
@@ -111,6 +114,7 @@ def convert_2_data(users, items, ratings, emb_dim, repr_dim):
             row_idx.append(i_nid)
             col_idx.append(g_nid)
             edge_attrs.append([relation_map['genre'], -1])
+            rating_begin += 1
 
     print('Creating rating property edges...')
     for _, row in tqdm.tqdm(ratings.iterrows(), total=ratings.shape[0]):
@@ -120,6 +124,13 @@ def convert_2_data(users, items, ratings, emb_dim, repr_dim):
         row_idx.append(u_nid)
         col_idx.append(i_nid)
         edge_attrs.append([relation_map['interact'], row['rating']])
+
+    half_edge_mask = torch.zeros((rating_begin, 1))
+    rating_mask = torch.ones((ratings.shape[0], 1))
+    rating_edge_mask = torch.cat((half_edge_mask, rating_mask, half_edge_mask, rating_mask), dim=0)
+    if split is not None:
+        pass
+
 
     print('Creating reverse user property edges...')
     for _, row in tqdm.tqdm(users.iterrows(), total=users.shape[0]):
@@ -166,23 +177,6 @@ def convert_2_data(users, items, ratings, emb_dim, repr_dim):
     edge_index = torch.from_numpy(edge_index).long()
     edge_attrs = np.array(edge_attrs)
     edge_attrs = torch.from_numpy(edge_attrs).long()
-
-    # Create node mask
-    user_node_mask = torch.zeros((n_nodes, 1))
-    item_node_mask = torch.zeros((n_nodes, 1))
-    gender_node_mask = torch.zeros((n_nodes, 1))
-    occupation_node_mask = torch.zeros((n_nodes, 1))
-    genre_node_mask = torch.zeros((n_nodes, 1))
-    acc = 0
-    user_node_mask[acc: n_users, 0] = 1
-    acc += n_users
-    item_node_mask[acc: acc + n_items, 0] = 1
-    acc += n_items
-    gender_node_mask[acc: acc + n_genders, 0] = 1
-    acc += n_genders
-    occupation_node_mask[acc: acc + n_occupations, 0] = 1
-    acc += n_occupations
-    genre_node_mask[acc: acc + n_genres, 0] = 1
 
     return Data(
         x=x, edge_index=edge_index, edge_attr=edge_attrs,
@@ -375,16 +369,17 @@ if __name__ == '__main__':
     batch_size = 128
 
     root = osp.join('.', 'tmp', 'ml')
-    dataset = MovieLens(root, '1m', debug=True)
+    dataset = MovieLens(root, '1m')
     data = dataset.data
-    edge_iter = DataLoader(TensorDataset(data.edge_index.t(), data.edge_attr), batch_size=batch_size)
+    edge_iter = DataLoader(TensorDataset(data.edge_index.t(), data.edge_attr), batch_size=batch_size, shuffle=True)
 
     loss_func = torch.nn.MSELoss()
-    opt = torch.optim.SGD([data.x, data.r_proj, data.r_emb], lr=1e-2)
+    opt = torch.optim.SGD([data.x, data.r_proj, data.r_emb], lr=1e-3)
 
     for i in range(20):
         losses = []
-        for batch in edge_iter:
+        pbar = tqdm.tqdm(edge_iter, total=len(edge_iter))
+        for batch in pbar:
             edge_index, edge_attr = batch
             r_idx = edge_attr[:, 0]
             x = data.x
@@ -400,7 +395,7 @@ if __name__ == '__main__':
             opt.step()
 
             losses.append(float(loss.detach()))
-            print(np.mean(losses))
+            pbar.set_description('loss: {}'.format(np.mean(losses)))
 
 
 

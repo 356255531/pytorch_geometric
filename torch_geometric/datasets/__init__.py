@@ -27,6 +27,7 @@ from .gdelt import GDELT
 from .willow_object_class import WILLOWObjectClass
 from .dbp15k import DBP15K
 from .pascal import PascalVOCKeypoints
+from .movielens import MovieLens
 
 __all__ = [
     'KarateClub',
@@ -58,4 +59,5 @@ __all__ = [
     'WILLOWObjectClass',
     'PascalVOCKeypoints',
     'DBP15K',
+    'MovieLens'
 ]
