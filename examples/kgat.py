@@ -14,7 +14,7 @@ emb_dim = 300
 repr_dim = 64
 batch_size = 128
 path = osp.join(osp.dirname(osp.realpath(__file__)), '..', 'data', '1m')
-data = MovieLens(path, '1m', train_ratio=0.8, debug=True).data
+data = MovieLens(path, '1m', train_ratio=0.8).data
 
 
 class Net(torch.nn.Module):
@@ -65,7 +65,7 @@ test_rating_edge_iter = DataLoader(
 
 loss_func = torch.nn.MSELoss()
 opt_kg = torch.optim.SGD([data.x, data.r_proj, data.r_emb], lr=1e-3)
-opt_cf = torch.optim.Adam(model.parameters(), lr=1e-6)
+opt_cf = torch.optim.Adam(model.parameters(), lr=1e-5)
 
 for i in range(epochs):
     losses = []
@@ -97,7 +97,8 @@ for i in range(epochs):
         head = x[edge_index[:, 0]]
         tail = x[edge_index[:, 1]]
         est_rating = torch.sum(head * tail, dim=1).reshape(-1, 1)
-        loss = loss_func(est_rating, torch.tensor(edge_attr[:, 1:2], dtype=torch.float).detach() / 5)
+        rating = edge_attr[:, 1:2].float().detach() / 5
+        loss = loss_func(est_rating, rating)
 
         opt_cf.zero_grad()
         loss.backward()
@@ -116,7 +117,8 @@ for i in range(epochs):
             head = x[edge_index[:, 0]]
             tail = x[edge_index[:, 1]]
             est_rating = torch.sum(head * tail, dim=1).reshape(-1, 1)
-            loss = loss_func(est_rating, torch.tensor(edge_attr[:, 1:2], dtype=torch.float).detach() / 5)
+            rating = edge_attr[:, 1:2].float().detach() / 5
+            loss = loss_func(est_rating, rating)
 
             losses.append(float(loss.detach()))
             pbar.set_description('Epoch: {}, Validation loss: {}'.format(i, np.mean(losses)))
