@@ -46,7 +46,7 @@ def reindex_df(users, items, interactions):
     return users, items, interactions
 
 
-def convert_2_data(users, items, ratings, emb_dim, repr_dim, split):
+def convert_2_data(users, items, ratings, emb_dim, repr_dim, train_ratio):
     """
     Entitiy node include (gender, occupation, genres)
 
@@ -125,12 +125,42 @@ def convert_2_data(users, items, ratings, emb_dim, repr_dim, split):
         col_idx.append(i_nid)
         edge_attrs.append([relation_map['interact'], row['rating']])
 
-    half_edge_mask = torch.zeros((rating_begin, 1))
-    rating_mask = torch.ones((ratings.shape[0], 1))
-    rating_edge_mask = torch.cat((half_edge_mask, rating_mask, half_edge_mask, rating_mask), dim=0)
-    if split is not None:
-        pass
+    rating_mask = torch.ones((ratings.shape[0]))
+    rating_edge_mask = torch.cat(
+        (
+            torch.zeros((rating_begin)),
+            rating_mask,
+            torch.zeros((rating_begin)),
+            rating_mask),
+    )
+    rating_edge_mask = torch.tensor(rating_edge_mask, dtype=torch.bool)
+    if train_ratio is not None:
+        train_rating_mask = torch.zeros((ratings.shape[0]))
+        test_rating_mask = torch.ones((ratings.shape[0]))
+        train_rating_idx = torch.multinomial(
+            torch.ones(ratings.shape[0]) / ratings.shape[0],
+            int(ratings.shape[0] * train_ratio)
+        )
+        train_rating_mask[train_rating_idx] = 1
+        test_rating_mask[train_rating_idx] = 0
 
+        train_edge_mask = torch.cat(
+            (
+                torch.ones((rating_begin)),
+                train_rating_mask,
+                torch.ones((rating_begin)),
+                train_rating_mask)
+        )
+        train_edge_mask = torch.tensor(train_edge_mask, dtype=torch.bool)
+
+        test_edge_mask = torch.cat(
+            (
+                torch.ones((rating_begin)),
+                test_rating_mask,
+                torch.ones((rating_begin)),
+                test_rating_mask)
+        )
+        test_edge_mask = torch.tensor(test_edge_mask, dtype=torch.bool)
 
     print('Creating reverse user property edges...')
     for _, row in tqdm.tqdm(users.iterrows(), total=users.shape[0]):
@@ -178,11 +208,23 @@ def convert_2_data(users, items, ratings, emb_dim, repr_dim, split):
     edge_attrs = np.array(edge_attrs)
     edge_attrs = torch.from_numpy(edge_attrs).long()
 
-    return Data(
-        x=x, edge_index=edge_index, edge_attr=edge_attrs,
-        r_emb=r_emb, r_proj=r_proj, n_users=n_users,
-        n_items=n_items, n_interactions=n_interactions, relation_map=relation_map
-    )
+    if train_ratio is not None:
+        data = Data(
+            x=x, edge_index=edge_index, edge_attr=edge_attrs,
+            rating_edge_mask=rating_edge_mask, train_edge_mask=train_edge_mask,
+            test_edge_mask=test_edge_mask, r_emb=r_emb, r_proj=r_proj,
+            n_users=n_users, n_items=n_items, n_interactions=n_interactions,
+            relation_map=relation_map
+        )
+    else:
+        data = Data(
+            x=x, edge_index=edge_index, edge_attr=edge_attrs,
+            rating_edge_mask=rating_edge_mask,
+            r_emb=r_emb, r_proj=r_proj, n_users=n_users,
+            n_items=n_items, n_interactions=n_interactions, relation_map=relation_map
+        )
+
+    return data
 
 
 def random_split(edge_index, splits):
@@ -242,6 +284,7 @@ class MovieLens(InMemoryDataset):
                  name,
                  emb_dim=300,
                  repr_dim=64,
+                 train_ratio=None,
                  transform=None,
                  pre_transform=None,
                  pre_filter=None,
@@ -250,20 +293,13 @@ class MovieLens(InMemoryDataset):
         assert self.name in ['1m']
         self.emb_dim = emb_dim
         self.repr_dim = repr_dim
+        self.train_ratio = train_ratio
         self.debug = debug
+        self.suffix = self.build_suffix()
         super(MovieLens, self).__init__(root, transform, pre_transform, pre_filter)
 
         self.data, self.slices = torch.load(self.processed_paths[0])
-        # if self.splits is not None:
-        #     self.edge_idx = np.load(self.processed_paths[1])
-        #     self.edge_attrs = np.load(self.processed_paths[2])
-        #     self.prior_edge_idx_idx = np.load(self.processed_paths[3])
-        #     self.train_edge_idx_idx = np.load(self.processed_paths[4])
-        #     self.test_edge_idx_idx = np.load(self.processed_paths[5])
-        #
-        #     [self.n_users, self.n_items, self.n_interactions, self.n_nodes, self.n_edges] = restore(self.processed_paths[6])
-        #     self.adj_dict = restore(self.processed_paths[7])
-        #     self.prior_adj_dict = restore(self.processed_paths[8])
+
         print('Dataset loaded!')
 
     @property
@@ -272,58 +308,12 @@ class MovieLens(InMemoryDataset):
 
     @property
     def processed_file_names(self):
-        return ['data.pt']
-        # return [
-        #     'data.pt', 'edge_idx.npy', 'edge_attrs.npy', 'prior_edge_idx_idx.npy', 'train_edge_idx_idx.npy',
-        #     'test_edge_idx_idx.npy', 'statistics.pkl', 'adj_dict.pkl', 'prior_adj_dict.pkl']
+        return ['data{}.pt'.format(self.suffix)]
 
     def download(self):
         path = download_url(self.url + self.raw_file_names, self.raw_dir)
 
         extract_zip(path, self.raw_dir)
-
-    # def gen_save_ds_property(self, users, items, ratings, splits):
-    #     """
-    #     Only include each edge for one time in edge_idx
-    #     :param users: users df
-    #     :param items: items df
-    #     :param ratings: ratings df
-    #     :param splits: str, '0.8,0.1,0.1'
-    #     :return:
-    #     """
-    #     n_users = users.shape[0]
-    #     n_items = items.shape[0]
-    #     n_interactions = ratings.shape[0]
-    #     n_nodes = n_users + n_items
-    #     n_edges = n_interactions
-    #
-    #     row_idx, col_idx = [], []
-    #     edge_attrs = []
-    #     print('Creating dataset property...')
-    #     for _, row in tqdm.tqdm(ratings.iterrows(), total=ratings.shape[0]):
-    #         u_nid = row['uid']
-    #         i_nid = row['iid'] + n_users
-    #         r = row['rating']
-    #         t = row['timestamp']
-    #
-    #         row_idx.append(u_nid)
-    #         col_idx.append(i_nid)
-    #         edge_attrs.append([r, t])
-    #
-    #     edge_idx = np.concatenate((np.array(row_idx).reshape(1, -1), np.array(col_idx).reshape(1, -1)), axis=0)
-    #     edge_attrs = np.array(edge_attrs)
-    #
-    #     prior_edge_idx_idx, train_edge_idx_idx, test_edge_idx_idx = random_split(edge_idx, splits=splits)
-    #     adj_dict, prior_adj_dict = create_adj_dict(edge_idx, edge_attrs, prior_edge_idx_idx)
-    #
-    #     np.save(self.processed_paths[1], edge_idx)
-    #     np.save(self.processed_paths[2], edge_attrs)
-    #     np.save(self.processed_paths[3], prior_edge_idx_idx)
-    #     np.save(self.processed_paths[4], train_edge_idx_idx)
-    #     np.save(self.processed_paths[5], test_edge_idx_idx)
-    #     save([n_users, n_items, n_interactions, n_nodes, n_edges], self.processed_paths[6])
-    #     save(adj_dict, self.processed_paths[7])
-    #     save(prior_adj_dict, self.processed_paths[8])
 
     def process(self):
         unzip_raw_dir = join(self.raw_dir, 'ml-{}'.format(self.name))
@@ -348,12 +338,21 @@ class MovieLens(InMemoryDataset):
 
         users, items, ratings = reindex_df(users, items, ratings)
 
-        data = convert_2_data(users, items, ratings, self.emb_dim, self.repr_dim)
+        data = convert_2_data(users, items, ratings, self.emb_dim, self.repr_dim, self.train_ratio)
 
         torch.save(self.collate([data]), self.processed_paths[0])
 
-        # if self.splits is not None:
-        #     self.gen_save_ds_property(users, items, ratings, self.splits)
+    def build_suffix(self):
+        suffixes = []
+        if self.train_ratio is not None:
+            suffixes.append('train')
+        if self.debug:
+            suffixes.append('debug')
+        if not suffixes:
+            suffix = ''
+        else:
+            suffix = '_'.join(suffixes)
+        return '_' + suffix
 
     def __repr__(self):
         return '{}-{}'.format(self.__class__.__name__, self.name.capitalize())
@@ -369,9 +368,9 @@ if __name__ == '__main__':
     batch_size = 128
 
     root = osp.join('.', 'tmp', 'ml')
-    dataset = MovieLens(root, '1m')
+    dataset = MovieLens(root, '1m', train_ratio=0.8, debug=True)
     data = dataset.data
-    edge_iter = DataLoader(TensorDataset(data.edge_index.t(), data.edge_attr), batch_size=batch_size, shuffle=True)
+    edge_iter = DataLoader(TensorDataset(data.edge_index.t()[data.train_edge_mask], data.edge_attr[data.train_edge_mask],), batch_size=batch_size, shuffle=True)
 
     loss_func = torch.nn.MSELoss()
     opt = torch.optim.SGD([data.x, data.r_proj, data.r_emb], lr=1e-3)
@@ -388,7 +387,7 @@ if __name__ == '__main__':
             proj_head = torch.matmul(x[edge_index[:, :1]], r_proj).reshape(-1, repr_dim)
             proj_tail = torch.matmul(x[edge_index[:, 1:2]], r_proj).reshape(-1, repr_dim)
 
-            loss = loss_func(r_emb + proj_head, proj_tail.detach())
+            loss = loss_func(r_emb + proj_head, proj_tail)
 
             opt.zero_grad()
             loss.backward()
@@ -396,19 +395,3 @@ if __name__ == '__main__':
 
             losses.append(float(loss.detach()))
             pbar.set_description('loss: {}'.format(np.mean(losses)))
-
-
-
-    # head_emb = data.x[data.edge_idx[:, :1]]
-    # tail_emb = data.x[data.edge_idx[:, 1:2]]
-    # relation = data.r_emb[data.edge_attr[:, :1]]
-    # proj_head_emb = torch.mul()
-    #
-    # r_proj = data.r_proj[data.edge_attr[:, :1]]
-    # r_proj = r_proj.reshape(r_proj.shape[0], emb_dim, repr_dim)
-    #
-    # opt = torch.optim.SGD()
-    # loss_func = torch.nn.MSE()
-    #
-    # for i in range(10):
-    #     loss =
