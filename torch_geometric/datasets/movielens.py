@@ -47,13 +47,15 @@ def reindex_df(users, items, interactions):
     return users, items, interactions
 
 
-def convert_2_data(users, items, ratings, emb_dim, repr_dim, train_ratio):
+def convert_2_data(users, items, ratings, emb_dim, repr_dim, train_ratio, tensor_type):
     """
     Entitiy node include (gender, occupation, genres)
 
     n_nodes = n_users + n_items + n_genders + n_occupation + n_genres
 
     """
+    float_tensor, long_tensor, byte_tensor = tensor_type
+
     n_users = users.shape[0]
     n_items = items.shape[0]
     n_interactions = ratings.shape[0]
@@ -74,10 +76,10 @@ def convert_2_data(users, items, ratings, emb_dim, repr_dim, train_ratio):
 
     n_nodes = n_users + n_items + n_genders + n_occupations + n_genres
 
-    x = torch.nn.Embedding(n_nodes, emb_dim, max_norm=1, norm_type=2.0).weight
+    x = torch.nn.Embedding(n_nodes, emb_dim, max_norm=1, norm_type=2.0).type(float_tensor).weight
 
-    r_emb = torch.nn.Embedding(n_relations, repr_dim, max_norm=1, norm_type=2.0).weight
-    r_proj = torch.nn.Embedding(n_relations // 2, emb_dim * repr_dim, max_norm=1, norm_type=2.0).weight
+    r_emb = torch.nn.Embedding(n_relations, repr_dim, max_norm=1, norm_type=2.0).type(float_tensor).weight
+    r_proj = torch.nn.Embedding(n_relations // 2, emb_dim * repr_dim, max_norm=1, norm_type=2.0).type(float_tensor).weight
     r_proj = torch.cat((r_proj, -r_proj), dim=0)
 
     row_idx, col_idx = [], []
@@ -126,36 +128,36 @@ def convert_2_data(users, items, ratings, emb_dim, repr_dim, train_ratio):
         col_idx.append(i_nid)
         edge_attrs.append([relation_map['interact'], row['rating']])
 
-    rating_mask = torch.ones((ratings.shape[0]))
+    rating_mask = torch.ones(ratings.shape[0]).type(byte_tensor)
     rating_edge_mask = torch.cat(
         (
-            torch.zeros((rating_begin)),
+            torch.zeros(rating_begin).type(byte_tensor),
             rating_mask,
-            torch.zeros((rating_begin)),
+            torch.zeros(rating_begin).type(byte_tensor),
             rating_mask),
     )
     rating_edge_mask = rating_edge_mask == 1
     if train_ratio is not None:
-        train_rating_mask = torch.zeros((ratings.shape[0]))
-        test_rating_mask = torch.ones((ratings.shape[0]))
+        train_rating_mask = torch.zeros(ratings.shape[0]).type(byte_tensor)
+        test_rating_mask = torch.ones(ratings.shape[0]).type(byte_tensor)
         train_rating_idx = rd.sample([i for i in range(ratings.shape[0])], int(ratings.shape[0]*0.8))
         train_rating_mask[train_rating_idx] = 1
         test_rating_mask[train_rating_idx] = 0
 
         train_edge_mask = torch.cat(
             (
-                torch.ones((rating_begin)),
+                torch.ones(rating_begin).type(byte_tensor),
                 train_rating_mask,
-                torch.ones((rating_begin)),
+                torch.ones(rating_begin).type(byte_tensor),
                 train_rating_mask)
         )
         train_edge_mask = train_edge_mask == 1
 
         test_edge_mask = torch.cat(
             (
-                torch.ones((rating_begin)),
+                torch.ones(rating_begin).type(byte_tensor),
                 test_rating_mask,
-                torch.ones((rating_begin)),
+                torch.ones(rating_begin).type(byte_tensor),
                 test_rating_mask)
         )
         test_edge_mask = test_edge_mask == 1
@@ -202,9 +204,9 @@ def convert_2_data(users, items, ratings, emb_dim, repr_dim, train_ratio):
     row_idx = np.array(row_idx).reshape(1, -1)
     col_idx = np.array(col_idx).reshape(1, -1)
     edge_index = np.concatenate((row_idx, col_idx), axis=0)
-    edge_index = torch.from_numpy(edge_index).long()
+    edge_index = torch.from_numpy(edge_index).type(long_tensor)
     edge_attrs = np.array(edge_attrs)
-    edge_attrs = torch.from_numpy(edge_attrs).long()
+    edge_attrs = torch.from_numpy(edge_attrs).type(long_tensor)
 
     if train_ratio is not None:
         data = Data(
@@ -242,6 +244,7 @@ class MovieLens(InMemoryDataset):
     def __init__(self,
                  root,
                  name,
+                 tensor_type,
                  emb_dim=300,
                  repr_dim=64,
                  train_ratio=None,
@@ -254,6 +257,7 @@ class MovieLens(InMemoryDataset):
         self.emb_dim = emb_dim
         self.repr_dim = repr_dim
         self.train_ratio = train_ratio
+        self.tensor_type = tensor_type
         self.debug = debug
         self.suffix = self.build_suffix()
         super(MovieLens, self).__init__(root, transform, pre_transform, pre_filter)
@@ -298,7 +302,7 @@ class MovieLens(InMemoryDataset):
 
         users, items, ratings = reindex_df(users, items, ratings)
 
-        data = convert_2_data(users, items, ratings, self.emb_dim, self.repr_dim, self.train_ratio)
+        data = convert_2_data(users, items, ratings, self.emb_dim, self.repr_dim, self.train_ratio, tensor_type=self.tensor_type)
 
         torch.save(self.collate([data]), self.processed_paths[0])
 
@@ -323,12 +327,22 @@ if __name__ == '__main__':
     from torch.utils.data import TensorDataset, DataLoader
     import numpy as np
 
+    if torch.cuda.is_available():
+        float_tensor = torch.cuda.FloatTensor
+        long_tensor = torch.cuda.LongTensor
+        byte_tensor = torch.cuda.ByteTensor
+    else:
+        float_tensor = torch.FloatTensor
+        long_tensor = torch.LongTensor
+        byte_tensor = torch.ByteTensor
+    tensor_type = (float_tensor, long_tensor, byte_tensor)
+
     emb_dim = 300
     repr_dim = 64
     batch_size = 128
 
     root = osp.join('.', 'tmp', 'ml')
-    dataset = MovieLens(root, '1m', train_ratio=0.8, debug=True)
+    dataset = MovieLens(root, '1m', tensor_type, train_ratio=0.8, debug=True)
     data = dataset.data
     edge_iter = DataLoader(TensorDataset(data.edge_index.t()[data.train_edge_mask], data.edge_attr[data.train_edge_mask],), batch_size=batch_size, shuffle=True)
 
