@@ -4,7 +4,7 @@ import torch
 import torch.nn.functional as F
 from torch.utils.data import TensorDataset, DataLoader
 from torch_geometric.datasets import MovieLens
-from torch_geometric.nn import GCNConv
+from torch_geometric.nn import GCNConv, PAConv
 
 import tqdm
 import numpy as np
@@ -24,15 +24,30 @@ tensor_type = (float_tensor, long_tensor, byte_tensor)
 epochs = 40
 emb_dim = 300
 repr_dim = 64
-kg_batch_size = 1024
+kg_batch_size = 4096
 cf_batch_size = 1024
 path = osp.join(osp.dirname(osp.realpath(__file__)), '..', 'data', '1m')
 data = MovieLens(path, '1m', tensor_type, train_ratio=0.8).data
 
 
-class Net(torch.nn.Module):
+class PACNet(torch.nn.Module):
     def __init__(self):
-        super(Net, self).__init__()
+        super(PACNet, self).__init__()
+        self.conv1 = PAConv(300, 16, cached=True)
+        self.conv2 = PAConv(16, 64, cached=True)
+        # self.conv1 = ChebConv(data.num_features, 16, K=2)
+        # self.conv2 = ChebConv(16, data.num_features, K=2)
+
+    def forward(self, x, edge_index):
+        x = F.relu(self.conv1(x, edge_index))
+        x = F.dropout(x, training=self.training)
+        x = self.conv2(x, edge_index)
+        return x
+
+
+class GCNNet(torch.nn.Module):
+    def __init__(self):
+        super(GCNNet, self).__init__()
         self.conv1 = GCNConv(300, 16, cached=True)
         self.conv2 = GCNConv(16, 64, cached=True)
         # self.conv1 = ChebConv(data.num_features, 16, K=2)
@@ -44,7 +59,8 @@ class Net(torch.nn.Module):
         x = self.conv2(x, edge_index)
         return x
 
-model = Net().to(device)
+
+model = GCNNet().to(device)
 
 edge_iter = DataLoader(
     TensorDataset(
