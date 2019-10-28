@@ -3,6 +3,7 @@ from collections import defaultdict
 from torch_geometric.data import InMemoryDataset, download_url
 from os.path import join
 import numpy as np
+import random as rd
 import tqdm
 import pickle
 
@@ -133,14 +134,11 @@ def convert_2_data(users, items, ratings, emb_dim, repr_dim, train_ratio):
             torch.zeros((rating_begin)),
             rating_mask),
     )
-    rating_edge_mask = torch.tensor(rating_edge_mask, dtype=torch.bool)
+    rating_edge_mask = rating_edge_mask == 1
     if train_ratio is not None:
         train_rating_mask = torch.zeros((ratings.shape[0]))
         test_rating_mask = torch.ones((ratings.shape[0]))
-        train_rating_idx = torch.multinomial(
-            torch.ones(ratings.shape[0]) / ratings.shape[0],
-            int(ratings.shape[0] * train_ratio)
-        )
+        train_rating_idx = rd.sample([i for i in range(ratings.shape[0])], int(ratings.shape[0]*0.8))
         train_rating_mask[train_rating_idx] = 1
         test_rating_mask[train_rating_idx] = 0
 
@@ -151,7 +149,7 @@ def convert_2_data(users, items, ratings, emb_dim, repr_dim, train_ratio):
                 torch.ones((rating_begin)),
                 train_rating_mask)
         )
-        train_edge_mask = torch.tensor(train_edge_mask, dtype=torch.bool)
+        train_edge_mask = train_edge_mask == 1
 
         test_edge_mask = torch.cat(
             (
@@ -160,7 +158,7 @@ def convert_2_data(users, items, ratings, emb_dim, repr_dim, train_ratio):
                 torch.ones((rating_begin)),
                 test_rating_mask)
         )
-        test_edge_mask = torch.tensor(test_edge_mask, dtype=torch.bool)
+        test_edge_mask = test_edge_mask == 1
 
     print('Creating reverse user property edges...')
     for _, row in tqdm.tqdm(users.iterrows(), total=users.shape[0]):
@@ -225,44 +223,6 @@ def convert_2_data(users, items, ratings, emb_dim, repr_dim, train_ratio):
         )
 
     return data
-
-
-def random_split(edge_index, splits):
-    print('Splitting data...')
-    prior_r, train_idx, test_r = splits
-
-    n_edges = edge_index.shape[1]
-    edge_idx_idx = np.arange(n_edges)
-
-    np.random.seed(1234)
-    np.random.shuffle(edge_idx_idx)
-
-    prior_upper_bound = int(n_edges * prior_r)
-    train_upper_bound = int(n_edges * (prior_r + train_idx))
-    prior_edge_idx_idx = edge_idx_idx[:prior_upper_bound]
-    train_edge_idx_idx = edge_idx_idx[prior_upper_bound: train_upper_bound]
-    test_edge_idx_idx = edge_idx_idx[train_upper_bound:]
-
-    return prior_edge_idx_idx, train_edge_idx_idx, test_edge_idx_idx
-
-
-def create_adj_dict(edge_idx, edge_attr, prior_edge_idx_idx):
-    print('Creating adjacency dictionary...')
-    rows, cols = edge_idx[0, :], edge_idx[1, :]
-    rs = edge_attr[:, 0]
-    adj_dict = defaultdict(list)
-    for row, col, r in zip(rows, cols, rs):
-        adj_dict[row].append((r, col))
-        adj_dict[col].append((r, row))
-
-    rows, cols = edge_idx[0, prior_edge_idx_idx], edge_idx[1, prior_edge_idx_idx]
-    rs = edge_attr[prior_edge_idx_idx, 0]
-    prior_adj_dict = defaultdict(list)
-    for row, col, r in zip(rows, cols, rs):
-        prior_adj_dict[row].append((r, col))
-        prior_adj_dict[col].append((r, row))
-
-    return adj_dict, prior_adj_dict
 
 
 def save(obj, path):
