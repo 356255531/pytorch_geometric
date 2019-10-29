@@ -4,7 +4,7 @@ import torch
 import torch.nn.functional as F
 from torch.utils.data import TensorDataset, DataLoader
 from torch_geometric.datasets import MovieLens
-from torch_geometric.nn import GCNConv, PAConv
+from torch_geometric.nn import GCNConv, PAConv, GATConv
 
 import tqdm
 import numpy as np
@@ -24,17 +24,17 @@ tensor_type = (float_tensor, long_tensor, byte_tensor)
 epochs = 40
 emb_dim = 300
 repr_dim = 64
-kg_batch_size = 4096
+kg_batch_size = 1024
 cf_batch_size = 1024
 path = osp.join(osp.dirname(osp.realpath(__file__)), '..', 'data', '1m')
 data = MovieLens(path, '1m', tensor_type, train_ratio=0.8).data
 
 
-class PACNet(torch.nn.Module):
+class GCNNet(torch.nn.Module):
     def __init__(self):
-        super(PACNet, self).__init__()
-        self.conv1 = PAConv(300, 16, cached=True)
-        self.conv2 = PAConv(16, 64, cached=True)
+        super(GCNNet, self).__init__()
+        self.conv1 = GCNConv(300, 128, cached=True)
+        self.conv2 = GCNConv(128, 64, cached=True)
         # self.conv1 = ChebConv(data.num_features, 16, K=2)
         # self.conv2 = ChebConv(16, data.num_features, K=2)
 
@@ -45,13 +45,32 @@ class PACNet(torch.nn.Module):
         return x
 
 
-class GCNNet(torch.nn.Module):
+class GATNet(torch.nn.Module):
     def __init__(self):
-        super(GCNNet, self).__init__()
-        self.conv1 = GCNConv(300, 16, cached=True)
-        self.conv2 = GCNConv(16, 64, cached=True)
+        super(GATNet, self).__init__()
+        self.conv1 = GATConv(300, 64, heads=8, dropout=0.6)
+        # On the Pubmed dataset, use heads=8 in conv2.
+        self.conv2 = GATConv(
+            512, 64, heads=1, concat=True, dropout=0.6)
+
+    def forward(self, x, edge_index):
+        x = F.dropout(x, p=0.6, training=self.training)
+        x = F.elu(self.conv1(x, edge_index))
+        x = F.dropout(x, p=0.6, training=self.training)
+        x = self.conv2(x, edge_index)
+        return x
+
+
+class PACNet(torch.nn.Module):
+    def __init__(self):
+        super(PACNet, self).__init__()
+        self.conv1 = GATConv(300, 16, heads=8, dropout=0.6)
+        self.conv2 = GCNConv(128, 64, cached=True)
         # self.conv1 = ChebConv(data.num_features, 16, K=2)
         # self.conv2 = ChebConv(16, data.num_features, K=2)
+
+    def get_attention(self):
+        pass
 
     def forward(self, x, edge_index):
         x = F.relu(self.conv1(x, edge_index))
@@ -90,10 +109,10 @@ test_rating_edge_iter = DataLoader(
 )
 
 loss_func = torch.nn.MSELoss()
-opt_kg = torch.optim.SGD([data.x, data.r_proj, data.r_emb], lr=1e-3)
+opt_kg = torch.optim.Adam([data.x, data.r_proj, data.r_emb], lr=1e-3)
 
 params = [param for param in model.parameters()]
-opt_cf = torch.optim.Adam(params + [data.x, data.r_proj, data.r_emb], lr=1e-5)
+opt_cf = torch.optim.Adam(params + [data.x, data.r_proj, data.r_emb], lr=1e-3)
 
 for i in range(epochs):
     losses = []
