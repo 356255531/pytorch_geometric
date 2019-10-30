@@ -1,4 +1,5 @@
 import torch
+import numpy as np
 
 from .num_nodes import maybe_num_nodes
 
@@ -32,6 +33,15 @@ def remove_self_loops(edge_index, edge_attr=None):
     mask = row != col
     edge_attr = edge_attr if edge_attr is None else edge_attr[mask]
     edge_index = edge_index[:, mask]
+
+    return edge_index, edge_attr
+
+
+def remove_self_loops_np(edge_index, edge_attr=None):
+    row, col = edge_index
+    mask = row != col
+    edge_attr = edge_attr if edge_attr is None else edge_attr[mask]
+    edge_index = edge_index[:, row != col]
 
     return edge_index, edge_attr
 

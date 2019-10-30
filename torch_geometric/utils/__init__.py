@@ -5,6 +5,7 @@ from .dropout import dropout_adj
 from .sort_edge_index import sort_edge_index
 from .undirected import is_undirected, to_undirected
 from .loop import (contains_self_loops, remove_self_loops,
+                    remove_self_loops_np,
                    segregate_self_loops, add_self_loops,
                    add_remaining_self_loops)
 from .isolated import contains_isolated_nodes, remove_isolated_nodes
@@ -16,6 +17,7 @@ from .sparse import dense_to_sparse
 from .normalized_cut import normalized_cut
 from .grid import grid
 from .geodesic import geodesic_distance
+from .get_sec_edge_index import get_sec_order_edge
 from .convert import to_scipy_sparse_matrix, from_scipy_sparse_matrix
 from .convert import to_networkx, from_networkx
 from .random import (erdos_renyi_graph, stochastic_blockmodel_graph,
@@ -37,6 +39,7 @@ __all__ = [
     'to_undirected',
     'contains_self_loops',
     'remove_self_loops',
+    'remove_self_loops_np',
     'segregate_self_loops',
     'add_self_loops',
     'add_remaining_self_loops',
@@ -50,6 +53,7 @@ __all__ = [
     'normalized_cut',
     'grid',
     'geodesic_distance',
+    'get_sec_edge_index',
     'to_scipy_sparse_matrix',
     'from_scipy_sparse_matrix',
     'to_networkx',
