@@ -10,7 +10,7 @@ import numpy as np
 import random as rd
 import tqdm
 import pickle
-import scipy
+import pandas
 
 
 def reindex_df(users, items, interactions):
@@ -124,45 +124,42 @@ def convert_2_data(users, items, ratings, emb_dim, repr_dim, train_ratio, sec_or
     print('Creating rating property edges...')
     for _, row in tqdm.tqdm(ratings.iterrows(), total=ratings.shape[0]):
         u_nid = row['uid']
-        i_nid = row['iid']
+        i_nid = n_users + row['iid']
 
         row_idx.append(u_nid)
         col_idx.append(i_nid)
         edge_attrs.append([relation_map['interact'], row['rating']])
 
-    rating_mask = torch.ones(ratings.shape[0]).type(byte_tensor)
+    rating_mask = torch.ones(ratings.shape[0])
     rating_edge_mask = torch.cat(
         (
-            torch.zeros(rating_begin).type(byte_tensor),
+            torch.zeros(rating_begin),
             rating_mask,
-            torch.zeros(rating_begin).type(byte_tensor),
+            torch.zeros(rating_begin),
             rating_mask),
-    )
-    rating_edge_mask = rating_edge_mask == 1
+    ).type(byte_tensor)
     if train_ratio is not None:
-        train_rating_mask = torch.zeros(ratings.shape[0]).type(byte_tensor)
-        test_rating_mask = torch.ones(ratings.shape[0]).type(byte_tensor)
+        train_rating_mask = torch.zeros(ratings.shape[0])
+        test_rating_mask = torch.ones(ratings.shape[0])
         train_rating_idx = rd.sample([i for i in range(ratings.shape[0])], int(ratings.shape[0]*0.8))
         train_rating_mask[train_rating_idx] = 1
         test_rating_mask[train_rating_idx] = 0
 
         train_edge_mask = torch.cat(
             (
-                torch.ones(rating_begin).type(byte_tensor),
+                torch.ones(rating_begin),
                 train_rating_mask,
-                torch.ones(rating_begin).type(byte_tensor),
+                torch.ones(rating_begin),
                 train_rating_mask)
-        )
-        train_edge_mask = train_edge_mask == 1
+        ).type(byte_tensor)
 
         test_edge_mask = torch.cat(
             (
-                torch.ones(rating_begin).type(byte_tensor),
+                torch.ones(rating_begin),
                 test_rating_mask,
-                torch.ones(rating_begin).type(byte_tensor),
+                torch.ones(rating_begin),
                 test_rating_mask)
-        )
-        test_edge_mask = test_edge_mask == 1
+        ).type(byte_tensor)
 
     print('Creating reverse user property edges...')
     for _, row in tqdm.tqdm(users.iterrows(), total=users.shape[0]):
@@ -197,7 +194,7 @@ def convert_2_data(users, items, ratings, emb_dim, repr_dim, train_ratio, sec_or
     print('Creating reverse rating property edges...')
     for _, row in tqdm.tqdm(ratings.iterrows(), total=ratings.shape[0]):
         u_nid = row['uid']
-        i_nid = row['iid']
+        i_nid = n_users + row['iid']
 
         col_idx.append(u_nid)
         row_idx.append(i_nid)
@@ -220,9 +217,10 @@ def convert_2_data(users, items, ratings, emb_dim, repr_dim, train_ratio, sec_or
     if train_ratio is not None:
         kwargs['train_edge_mask'] = train_edge_mask
         kwargs['test_edge_mask'] = test_edge_mask
-        kwargs['sec_order_edge_index'] = get_sec_order_edge(edge_index[:, train_edge_mask], x, tensor_type)
+        kwargs['train_sec_order_edge_index'] = get_sec_order_edge(edge_index[:, train_edge_mask], x, tensor_type)
+        kwargs['test_sec_order_edge_index'] = get_sec_order_edge(edge_index, x, tensor_type)
     else:
-        kwargs['sec_order_edge_index'], kwargs['middle_node_index'] = get_sec_order_edge(edge_index, x, tensor_type)
+        kwargs['sec_order_edge_index'] = get_sec_order_edge(edge_index, x, tensor_type)
 
     return Data(**kwargs)
 
@@ -285,6 +283,11 @@ class MovieLens(InMemoryDataset):
 
         # read files
         users, items, ratings = read_ml(unzip_raw_dir, self.debug)
+
+        # remove duplications
+        users = users.drop_duplicates()
+        items = items.drop_duplicates()
+        ratings = ratings.drop_duplicates()
 
         item_count = ratings['iid'].value_counts()
         user_count = ratings['uid'].value_counts()

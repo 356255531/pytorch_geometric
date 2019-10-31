@@ -143,13 +143,12 @@ for i in range(epochs):
     #     losses.append(float(loss.detach()))
     #     pbar.set_description('Epoch: {}, Train KG loss: {:.3f}'.format(i + 1, np.mean(losses)))
 
-    # sec_order_edge_index = get_sec_order_edge(data.edge_index[:, data.train_edge_mask], long_tensor)
     model.training = True
     losses = []
     pbar = tqdm.tqdm(train_rating_edge_iter, total=len(train_rating_edge_iter))
     for batch in pbar:
         edge_index, edge_attr = batch
-        x = model(data.x, data.edge_index[:, data.train_edge_mask], data.sec_order_edge_index)
+        x = model(data.x, data.edge_index[:, data.train_edge_mask], data.train_sec_order_edge_index)
         head = x[edge_index[:, 0]]
         tail = x[edge_index[:, 1]]
         est_rating = torch.sum(head * tail, dim=1).reshape(-1, 1)
@@ -159,22 +158,21 @@ for i in range(epochs):
         loss.backward()
         opt_cf.step()
 
-        losses.append(float(loss.detach()))
+        losses.append(np.sqrt(float(loss.detach()) * 25))
         pbar.set_description('Epoch: {}, Train CF loss: {:.3f}'.format(i + 1, np.mean(losses)))
 
-    # sec_order_edge_index = get_sec_order_edge(data.edge_index[:, data.test_edge_mask], long_tensor)
     model.training = False
     losses = []
     pbar = tqdm.tqdm(test_rating_edge_iter, total=len(test_rating_edge_iter))
     with torch.no_grad():
         for batch in pbar:
             edge_index, edge_attr = batch
-            x = model(data.x, data.edge_index[:, data.train_edge_mask])
+            x = model(data.x, data.edge_index[:, data.train_edge_mask], data.train_sec_order_edge_index)
             head = x[edge_index[:, 0]]
             tail = x[edge_index[:, 1]]
             est_rating = torch.sum(head * tail, dim=1).reshape(-1, 1)
             rating = edge_attr[:, 1:2].float().detach() / 5
             loss = loss_func(est_rating, rating)
 
-            losses.append(float(loss.detach()))
+            losses.append(np.sqrt(float(loss.detach()) * 25))
             pbar.set_description('Epoch: {}, Validation loss: {:.3f}'.format(i + 1, np.mean(losses)))

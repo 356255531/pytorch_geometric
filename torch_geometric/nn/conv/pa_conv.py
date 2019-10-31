@@ -77,7 +77,7 @@ class PAConv(MessagePassing):
         zeros(self.bias)
 
     def forward(self, x, sec_order_edge_index, size=None):
-        """"""
+        """sec_order_edge_index should be without self-loop"""
         if torch.is_tensor(x):
             x = torch.matmul(x, self.weight)
         else:
