@@ -87,8 +87,6 @@ class MessagePassing(torch.nn.Module):
                     message_args.append(tmp)
                 else:
                     idx = ij[arg[-2:]]
-                    import pdb
-                    pdb.set_trace()
                     if isinstance(tmp, tuple) or isinstance(tmp, list):
                         assert len(tmp) == 2
                         if tmp[1 - idx] is not None:

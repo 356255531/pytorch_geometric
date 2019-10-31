@@ -220,7 +220,7 @@ def convert_2_data(users, items, ratings, emb_dim, repr_dim, train_ratio, sec_or
     if train_ratio is not None:
         kwargs['train_edge_mask'] = train_edge_mask
         kwargs['test_edge_mask'] = test_edge_mask
-        kwargs['sec_order_edge_index'], kwargs['middle_node_index'] = get_sec_order_edge(edge_index[:, train_edge_mask], x, tensor_type)
+        kwargs['sec_order_edge_index'] = get_sec_order_edge(edge_index[:, train_edge_mask], x, tensor_type)
     else:
         kwargs['sec_order_edge_index'], kwargs['middle_node_index'] = get_sec_order_edge(edge_index, x, tensor_type)
 

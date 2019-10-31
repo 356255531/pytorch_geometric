@@ -6,7 +6,6 @@ from torch.utils.data import TensorDataset, DataLoader
 
 from torch_geometric.datasets import MovieLens
 from torch_geometric.nn import GCNConv, PAConv, GATConv
-from torch_geometric.utils import remove_self_loops_np
 
 from torch_sparse import spspmm
 
@@ -81,10 +80,10 @@ class PACNet(torch.nn.Module):
     def get_attention(self):
         pass
 
-    def forward(self, x, edge_index, sec_order_edge_index, middle):
+    def forward(self, x, edge_index, sec_order_edge_index):
         x = F.relu(self.conv1(x, edge_index))
         x = F.dropout(x, training=self.training)
-        x = self.conv2(x, sec_order_edge_index, middle)
+        x = self.conv2(x, sec_order_edge_index)
         return x
 
 
@@ -150,7 +149,7 @@ for i in range(epochs):
     pbar = tqdm.tqdm(train_rating_edge_iter, total=len(train_rating_edge_iter))
     for batch in pbar:
         edge_index, edge_attr = batch
-        x = model(data.x, data.edge_index[:, data.train_edge_mask], data.sec_order_edge_index, data.middle_node_index)
+        x = model(data.x, data.edge_index[:, data.train_edge_mask], data.sec_order_edge_index)
         head = x[edge_index[:, 0]]
         tail = x[edge_index[:, 1]]
         est_rating = torch.sum(head * tail, dim=1).reshape(-1, 1)
