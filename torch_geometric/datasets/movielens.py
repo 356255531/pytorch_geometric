@@ -10,7 +10,6 @@ import numpy as np
 import random as rd
 import tqdm
 import pickle
-import pandas
 
 
 def reindex_df(users, items, interactions):
@@ -59,7 +58,7 @@ def convert_2_data(
     n_nodes = n_users + n_items + n_genders + n_occupation + n_genres
 
     """
-    float_tensor, int_tensor, bool_tensor = tensor_type
+    bool_tensor, float_tensor, char_tensor, byte_tensor, short_tensor, long_tensor = tensor_type
 
     n_users = users.shape[0]
     n_items = items.shape[0]
@@ -140,7 +139,7 @@ def convert_2_data(
             rating_mask,
             torch.zeros(rating_begin),
             rating_mask),
-    ).type(bool_tensor)
+    ).type(byte_tensor)
     if train_ratio is not None:
         train_rating_mask = torch.zeros(ratings.shape[0])
         test_rating_mask = torch.ones(ratings.shape[0])
@@ -154,7 +153,7 @@ def convert_2_data(
                 train_rating_mask,
                 torch.ones(rating_begin),
                 train_rating_mask)
-        ).type(bool_tensor)
+        ).type(byte_tensor)
 
         test_edge_mask = torch.cat(
             (
@@ -162,7 +161,7 @@ def convert_2_data(
                 test_rating_mask,
                 torch.ones(rating_begin),
                 test_rating_mask)
-        ).type(bool_tensor)
+        ).type(byte_tensor)
 
     print('Creating reverse user property edges...')
     for _, row in tqdm.tqdm(users.iterrows(), total=users.shape[0]):
@@ -206,9 +205,9 @@ def convert_2_data(
     row_idx = np.array(row_idx).reshape(1, -1)
     col_idx = np.array(col_idx).reshape(1, -1)
     edge_index = np.concatenate((row_idx, col_idx), axis=0)
-    edge_index = torch.from_numpy(edge_index).type(int_tensor)
+    edge_index = torch.from_numpy(edge_index).type(long_tensor)
     edge_attrs = np.array(edge_attrs)
-    edge_attrs = torch.from_numpy(edge_attrs).type(int_tensor)
+    edge_attrs = torch.from_numpy(edge_attrs).type(char_tensor)
 
     kwargs = {
         'x': x, 'edge_index': edge_index, 'edge_attr': edge_attrs,
@@ -222,11 +221,11 @@ def convert_2_data(
         kwargs['test_edge_mask'] = test_edge_mask
         if sec_order:
             kwargs['train_sec_order_edge_index'] = \
-                get_sec_order_edge(edge_index[:, train_edge_mask], x).type(int_tensor)
+                get_sec_order_edge(edge_index[:, train_edge_mask], x).type(long_tensor)
             kwargs['test_sec_order_edge_index'] = \
-                get_sec_order_edge(edge_index, x).type(int_tensor)
+                get_sec_order_edge(edge_index, x).type(long_tensor)
     else:
-        kwargs['sec_order_edge_index'] = get_sec_order_edge(edge_index, x).type(int_tensor)
+        kwargs['sec_order_edge_index'] = get_sec_order_edge(edge_index, x).type(long_tensor)
 
     return Data(**kwargs)
 
@@ -248,6 +247,8 @@ class MovieLens(InMemoryDataset):
     def __init__(self,
                  root,
                  name,
+                 tensor_type,
+                 sec_order=False,
                  emb_dim=300,
                  repr_dim=64,
                  transform=None,
@@ -262,15 +263,8 @@ class MovieLens(InMemoryDataset):
         self.train_ratio = kwargs.get('train_ratio', None)
         self.debug = kwargs.get('debug', False)
         self.suffix = self.build_suffix()
-
-        self.sec_order = kwargs.get('sec_order', None)
-        if kwargs.get('tensor_type', None) is None:
-            float_type = torch.float16
-            int_type = torch.int16
-            bool_type = torch.bool
-            self.tensor_type = (float_type, int_type, bool_type)
-        else:
-            self.tensor_type = kwargs.get('tensor_type', None)
+        self.sec_order = sec_order
+        self.tensor_type = tensor_type
         super(MovieLens, self).__init__(root, transform, pre_transform, pre_filter)
 
         self.data, self.slices = torch.load(self.processed_paths[0])

@@ -20,11 +20,19 @@ if torch.cuda.is_available():
     float_tensor = torch.cuda.FloatTensor
     int_tensor = torch.cuda.ShortTensor
     bool_tensor = torch.cuda.BoolTensor
+    char_tensor = torch.cuda.CharTensor
+    byte_tensor = torch.cuda.ByteTensor
+    short_tensor = torch.cuda.ShortTensor
+    long_tensor = torch.cuda.LongTensor
 else:
     float_tensor = torch.FloatTensor
     int_tensor = torch.ShortTensor
     bool_tensor = torch.BoolTensor
-tensor_type = (float_tensor, int_tensor, bool_tensor)
+    char_tensor = torch.CharTensor
+    byte_tensor = torch.ByteTensor
+    short_tensor = torch.ShortTensor
+    long_tensor = torch.LongTensor
+tensor_type = (bool_tensor, float_tensor, char_tensor, byte_tensor, short_tensor, long_tensor)
 
 epochs = 40
 emb_dim = 300
@@ -32,7 +40,7 @@ repr_dim = 64
 kg_batch_size = 1024
 cf_batch_size = 1024
 path = osp.join(osp.dirname(osp.realpath(__file__)), '..', 'data', '1m')
-data = MovieLens(path, '1m', tensor_type=tensor_type, train_ratio=0.8, sec_order=True).data
+data = MovieLens(path, '1m', tensor_type=tensor_type, train_ratio=0.8, sec_order=True, debug=True).data
 
 
 class GCNNet(torch.nn.Module):
@@ -67,10 +75,10 @@ class GATNet(torch.nn.Module):
 
 
 class PACNet(torch.nn.Module):
-    def __init__(self, tensor_type):
+    def __init__(self):
         super(PACNet, self).__init__()
-        self.conv1 = GATConv(300, 16, heads=4, dropout=0.6, tensor_type=tensor_type)
-        self.conv2 = PAConv(64, 8, heads=4, dropout=0.6, tensor_type=tensor_type)
+        self.conv1 = GATConv(300, 16, heads=4, dropout=0.6)
+        self.conv2 = PAConv(64, 8, heads=4, dropout=0.6)
         # self.conv1 = ChebConv(data.num_features, 16, K=2)
         # self.conv2 = ChebConv(16, data.num_features, K=2)
 
@@ -84,7 +92,7 @@ class PACNet(torch.nn.Module):
         return x
 
 
-model = PACNet(tensor_type)
+model = PACNet()
 
 edge_iter = DataLoader(
     TensorDataset(
