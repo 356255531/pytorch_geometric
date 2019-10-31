@@ -49,14 +49,17 @@ def reindex_df(users, items, interactions):
     return users, items, interactions
 
 
-def convert_2_data(users, items, ratings, emb_dim, repr_dim, train_ratio, sec_order, tensor_type):
+def convert_2_data(
+        users, items, ratings,
+        emb_dim, repr_dim,
+        train_ratio, sec_order, tensor_type):
     """
     Entitiy node include (gender, occupation, genres)
 
     n_nodes = n_users + n_items + n_genders + n_occupation + n_genres
 
     """
-    float_tensor, long_tensor, byte_tensor = tensor_type
+    float_tensor, int_tensor, bool_tensor = tensor_type
 
     n_users = users.shape[0]
     n_items = items.shape[0]
@@ -137,7 +140,7 @@ def convert_2_data(users, items, ratings, emb_dim, repr_dim, train_ratio, sec_or
             rating_mask,
             torch.zeros(rating_begin),
             rating_mask),
-    ).type(byte_tensor)
+    ).type(bool_tensor)
     if train_ratio is not None:
         train_rating_mask = torch.zeros(ratings.shape[0])
         test_rating_mask = torch.ones(ratings.shape[0])
@@ -151,7 +154,7 @@ def convert_2_data(users, items, ratings, emb_dim, repr_dim, train_ratio, sec_or
                 train_rating_mask,
                 torch.ones(rating_begin),
                 train_rating_mask)
-        ).type(byte_tensor)
+        ).type(bool_tensor)
 
         test_edge_mask = torch.cat(
             (
@@ -159,7 +162,7 @@ def convert_2_data(users, items, ratings, emb_dim, repr_dim, train_ratio, sec_or
                 test_rating_mask,
                 torch.ones(rating_begin),
                 test_rating_mask)
-        ).type(byte_tensor)
+        ).type(bool_tensor)
 
     print('Creating reverse user property edges...')
     for _, row in tqdm.tqdm(users.iterrows(), total=users.shape[0]):
@@ -203,9 +206,9 @@ def convert_2_data(users, items, ratings, emb_dim, repr_dim, train_ratio, sec_or
     row_idx = np.array(row_idx).reshape(1, -1)
     col_idx = np.array(col_idx).reshape(1, -1)
     edge_index = np.concatenate((row_idx, col_idx), axis=0)
-    edge_index = torch.from_numpy(edge_index).type(long_tensor)
+    edge_index = torch.from_numpy(edge_index).type(int_tensor)
     edge_attrs = np.array(edge_attrs)
-    edge_attrs = torch.from_numpy(edge_attrs).type(long_tensor)
+    edge_attrs = torch.from_numpy(edge_attrs).type(int_tensor)
 
     kwargs = {
         'x': x, 'edge_index': edge_index, 'edge_attr': edge_attrs,
@@ -217,10 +220,13 @@ def convert_2_data(users, items, ratings, emb_dim, repr_dim, train_ratio, sec_or
     if train_ratio is not None:
         kwargs['train_edge_mask'] = train_edge_mask
         kwargs['test_edge_mask'] = test_edge_mask
-        kwargs['train_sec_order_edge_index'] = get_sec_order_edge(edge_index[:, train_edge_mask], x, tensor_type)
-        kwargs['test_sec_order_edge_index'] = get_sec_order_edge(edge_index, x, tensor_type)
+        if sec_order:
+            kwargs['train_sec_order_edge_index'] = \
+                get_sec_order_edge(edge_index[:, train_edge_mask], x).type(int_tensor)
+            kwargs['test_sec_order_edge_index'] = \
+                get_sec_order_edge(edge_index, x).type(int_tensor)
     else:
-        kwargs['sec_order_edge_index'] = get_sec_order_edge(edge_index, x, tensor_type)
+        kwargs['sec_order_edge_index'] = get_sec_order_edge(edge_index, x).type(int_tensor)
 
     return Data(**kwargs)
 
@@ -242,10 +248,8 @@ class MovieLens(InMemoryDataset):
     def __init__(self,
                  root,
                  name,
-                 tensor_type,
                  emb_dim=300,
                  repr_dim=64,
-                 train_ratio=None,
                  transform=None,
                  pre_transform=None,
                  pre_filter=None,
@@ -254,11 +258,19 @@ class MovieLens(InMemoryDataset):
         assert self.name in ['1m']
         self.emb_dim = emb_dim
         self.repr_dim = repr_dim
-        self.train_ratio = train_ratio
-        self.tensor_type = tensor_type
+
+        self.train_ratio = kwargs.get('train_ratio', None)
         self.debug = kwargs.get('debug', False)
-        self.sec_order = kwargs.get('sec_order', False)
         self.suffix = self.build_suffix()
+
+        self.sec_order = kwargs.get('sec_order', None)
+        if kwargs.get('tensor_type', None) is None:
+            float_type = torch.float16
+            int_type = torch.int16
+            bool_type = torch.bool
+            self.tensor_type = (float_type, int_type, bool_type)
+        else:
+            self.tensor_type = kwargs.get('tensor_type', None)
         super(MovieLens, self).__init__(root, transform, pre_transform, pre_filter)
 
         self.data, self.slices = torch.load(self.processed_paths[0])
@@ -306,7 +318,10 @@ class MovieLens(InMemoryDataset):
 
         users, items, ratings = reindex_df(users, items, ratings)
 
-        data = convert_2_data(users, items, ratings, self.emb_dim, self.repr_dim, self.train_ratio, self.sec_order, tensor_type=self.tensor_type)
+        data = convert_2_data(
+            users, items, ratings,
+            self.emb_dim, self.repr_dim, self.train_ratio, self.sec_order,
+            tensor_type=self.tensor_type)
 
         torch.save(self.collate([data]), self.processed_paths[0])
 

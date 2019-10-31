@@ -7,27 +7,24 @@ from torch.utils.data import TensorDataset, DataLoader
 from torch_geometric.datasets import MovieLens
 from torch_geometric.nn import GCNConv, PAConv, GATConv
 
-from torch_sparse import spspmm
-
 import tqdm
 import numpy as np
-import scipy
-import itertools
-import pdb
 
 torch.random.manual_seed(2019)
 
+float_type = torch.float16
+int_tensor = torch.int16
+bool_tensor = torch.bool
+
 if torch.cuda.is_available():
     float_tensor = torch.cuda.FloatTensor
-    long_tensor = torch.cuda.LongTensor
-    byte_tensor = torch.cuda.ByteTensor
-    device = 'cuda'
+    int_tensor = torch.cuda.ShortTensor
+    bool_tensor = torch.cuda.BoolTensor
 else:
     float_tensor = torch.FloatTensor
-    long_tensor = torch.LongTensor
-    byte_tensor = torch.ByteTensor
-    device = 'cpu'
-tensor_type = (float_tensor, long_tensor, byte_tensor)
+    int_tensor = torch.ShortTensor
+    bool_tensor = torch.BoolTensor
+tensor_type = (float_tensor, int_tensor, bool_tensor)
 
 epochs = 40
 emb_dim = 300
@@ -35,7 +32,7 @@ repr_dim = 64
 kg_batch_size = 1024
 cf_batch_size = 1024
 path = osp.join(osp.dirname(osp.realpath(__file__)), '..', 'data', '1m')
-data = MovieLens(path, '1m', tensor_type, train_ratio=0.8, debug=True, sec_order=True).data
+data = MovieLens(path, '1m', tensor_type=tensor_type, train_ratio=0.8, sec_order=True).data
 
 
 class GCNNet(torch.nn.Module):
@@ -70,10 +67,10 @@ class GATNet(torch.nn.Module):
 
 
 class PACNet(torch.nn.Module):
-    def __init__(self):
+    def __init__(self, tensor_type):
         super(PACNet, self).__init__()
-        self.conv1 = GATConv(300, 16, heads=4, dropout=0.6)
-        self.conv2 = PAConv(64, 8, heads=4, dropout=0.6)
+        self.conv1 = GATConv(300, 16, heads=4, dropout=0.6, tensor_type=tensor_type)
+        self.conv2 = PAConv(64, 8, heads=4, dropout=0.6, tensor_type=tensor_type)
         # self.conv1 = ChebConv(data.num_features, 16, K=2)
         # self.conv2 = ChebConv(16, data.num_features, K=2)
 
@@ -87,7 +84,7 @@ class PACNet(torch.nn.Module):
         return x
 
 
-model = PACNet().to(device)
+model = PACNet(tensor_type)
 
 edge_iter = DataLoader(
     TensorDataset(
