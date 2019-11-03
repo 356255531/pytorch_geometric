@@ -50,8 +50,8 @@ def get_sec_order_edge(edge_index, x):
     sec_order_head = sec_order_adj_mat_row[sec_order_edge_index_index].reshape(1, -1)
     sec_order_mid = sec_order_mid.reshape(1, -1)
     sec_order_tail = sec_order_adj_mat_col[sec_order_edge_index_index].reshape(1, -1)
-    sec_order_edge_index = torch.from_numpy(
-        np.concatenate((sec_order_head, sec_order_mid, sec_order_tail), axis=0)
-    )
+    sec_order_edge_index = np.concatenate(
+        (sec_order_head, sec_order_mid, sec_order_tail),
+        axis=0)
 
     return sec_order_edge_index

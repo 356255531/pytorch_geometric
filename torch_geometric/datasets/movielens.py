@@ -51,14 +51,15 @@ def reindex_df(users, items, interactions):
 def convert_2_data(
         users, items, ratings,
         emb_dim, repr_dim,
-        train_ratio, sec_order, tensor_type):
+        train_ratio, sec_order,
+        tensor_type):
     """
     Entitiy node include (gender, occupation, genres)
 
     n_nodes = n_users + n_items + n_genders + n_occupation + n_genres
 
     """
-    bool_tensor, float_tensor, char_tensor, byte_tensor, short_tensor, long_tensor = tensor_type
+    float_tensor, bool_tensor, long_tensor = tensor_type
 
     n_users = users.shape[0]
     n_items = items.shape[0]
@@ -139,7 +140,7 @@ def convert_2_data(
             rating_mask,
             torch.zeros(rating_begin),
             rating_mask),
-    ).type(byte_tensor)
+    ).type(bool_tensor)
     if train_ratio is not None:
         train_rating_mask = torch.zeros(ratings.shape[0])
         test_rating_mask = torch.ones(ratings.shape[0])
@@ -153,7 +154,7 @@ def convert_2_data(
                 train_rating_mask,
                 torch.ones(rating_begin),
                 train_rating_mask)
-        ).type(byte_tensor)
+        ).type(bool_tensor)
 
         test_edge_mask = torch.cat(
             (
@@ -161,7 +162,7 @@ def convert_2_data(
                 test_rating_mask,
                 torch.ones(rating_begin),
                 test_rating_mask)
-        ).type(byte_tensor)
+        ).type(bool_tensor)
 
     print('Creating reverse user property edges...')
     for _, row in tqdm.tqdm(users.iterrows(), total=users.shape[0]):
@@ -207,7 +208,7 @@ def convert_2_data(
     edge_index = np.concatenate((row_idx, col_idx), axis=0)
     edge_index = torch.from_numpy(edge_index).type(long_tensor)
     edge_attrs = np.array(edge_attrs)
-    edge_attrs = torch.from_numpy(edge_attrs).type(char_tensor)
+    edge_attrs = torch.from_numpy(edge_attrs).type(long_tensor)
 
     kwargs = {
         'x': x, 'edge_index': edge_index, 'edge_attr': edge_attrs,
@@ -221,11 +222,11 @@ def convert_2_data(
         kwargs['test_edge_mask'] = test_edge_mask
         if sec_order:
             kwargs['train_sec_order_edge_index'] = \
-                get_sec_order_edge(edge_index[:, train_edge_mask], x).type(long_tensor)
+                get_sec_order_edge(edge_index[:, train_edge_mask], x)
             kwargs['test_sec_order_edge_index'] = \
-                get_sec_order_edge(edge_index, x).type(long_tensor)
+                get_sec_order_edge(edge_index, x)
     else:
-        kwargs['sec_order_edge_index'] = get_sec_order_edge(edge_index, x).type(long_tensor)
+        kwargs['sec_order_edge_index'] = get_sec_order_edge(edge_index, x)
 
     return Data(**kwargs)
 
@@ -333,3 +334,31 @@ class MovieLens(InMemoryDataset):
 
     def __repr__(self):
         return '{}-{}'.format(self.__class__.__name__, self.name.capitalize())
+
+
+if __name__ == '__main__':
+    import torch
+    from torch_geometric.datasets import MovieLens
+    import os.path as osp
+    import pdb
+
+    torch.random.manual_seed(2019)
+
+    if torch.cuda.is_available():
+        float_tensor = torch.cuda.FloatTensor
+        long_tensor = torch.cuda.LongTensor
+        bool_tensor = torch.cuda.BoolTensor
+    else:
+        float_tensor = torch.FloatTensor
+        long_tensor = torch.LongTensor
+        bool_tensor = torch.BoolTensor
+    tensor_type = (float_tensor, bool_tensor, long_tensor)
+
+    emb_dim = 300
+    repr_dim = 64
+    batch_size = 128
+
+    root = osp.join('.', 'tmp', 'ml')
+    dataset = MovieLens(root, '1m', tensor_type, train_ratio=0.8, debug=True, sec_order=True)
+    data = dataset.data
+    pdb.set_trace()
