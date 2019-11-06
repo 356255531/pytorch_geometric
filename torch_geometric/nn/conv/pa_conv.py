@@ -8,12 +8,11 @@ from ..inits import glorot, zeros
 
 
 class PAConv(MessagePassing):
-    r"""The graph attentional operator from the `"Graph Attention Networks"
-    <https://arxiv.org/abs/1710.10903>`_ paper
+    r"""Our path-aware attention"
 
     .. math::
         \mathbf{x}^{\prime}_i = \alpha_{i,i}\mathbf{\Theta}\mathbf{x}_{i} +
-        \sum_{j \in \mathcal{N}(i)} \alpha_{i,j}\mathbf{\Theta}\mathbf{x}_{j},
+        \sum_{j \in \mathcal{N}^2(i)} \alpha_{i,j}\mathbf{\Theta}\mathbf{x}_{j},
 
     where the attention coefficients :math:`\alpha_{i,j}` are computed as
 
@@ -23,7 +22,7 @@ class PAConv(MessagePassing):
         \exp\left(\mathrm{LeakyReLU}\left(\mathbf{a}^{\top}
         [\mathbf{\Theta}\mathbf{x}_i \, \Vert \, \mathbf{\Theta}\mathbf{x}_j]
         \right)\right)}
-        {\sum_{k \in \mathcal{N}(i) \cup \{ i \}}
+        {\sum_{k \in \mathcal{N}^2(i) \cup \{ i \}}
         \exp\left(\mathrm{LeakyReLU}\left(\mathbf{a}^{\top}
         [\mathbf{\Theta}\mathbf{x}_i \, \Vert \, \mathbf{\Theta}\mathbf{x}_k]
         \right)\right)}.

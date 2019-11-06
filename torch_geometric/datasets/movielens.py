@@ -1,15 +1,15 @@
 import torch
-
-from torch_geometric.data import InMemoryDataset, download_url
-from torch_geometric.io import read_ml
-from torch_geometric.data import Data, extract_zip
-from torch_geometric.utils import get_sec_order_edge
-
 from os.path import join
 import numpy as np
 import random as rd
 import tqdm
 import pickle
+
+
+from torch_geometric.data import InMemoryDataset, download_url
+from torch_geometric.io import read_ml
+from torch_geometric.data import Data, extract_zip
+from torch_geometric.utils import get_sec_order_edge
 
 
 def reindex_df(users, items, interactions):
@@ -54,9 +54,11 @@ def convert_2_data(
         train_ratio, sec_order,
         tensor_type):
     """
-    Entitiy node include (gender, occupation, genres)
+    Convert pandas.DataFrame to torch-geometirc graph dataset
 
-    n_nodes = n_users + n_items + n_genders + n_occupation + n_genres
+    Node include user nodes, item nodes and entity nodes (gender, occupation, genres)
+    Number and the order of nodes see below:
+        n_nodes = n_users + n_items + n_genders + n_occupation + n_genres
 
     """
     float_tensor, bool_tensor, long_tensor = tensor_type
@@ -81,10 +83,15 @@ def convert_2_data(
 
     n_nodes = n_users + n_items + n_genders + n_occupations + n_genres
 
+    # Node embedding
     x = torch.nn.Embedding(n_nodes, emb_dim, max_norm=1, norm_type=2.0).type(float_tensor).weight
 
+    # Relation embedding
     r_emb = torch.nn.Embedding(n_relations, repr_dim, max_norm=1, norm_type=2.0).type(float_tensor).weight
-    r_proj = torch.nn.Embedding(n_relations // 2, emb_dim * repr_dim, max_norm=1, norm_type=2.0).type(float_tensor).weight
+    # Knowledge graph projection embedding
+    r_proj = torch.nn.Embedding(
+        n_relations // 2, emb_dim * repr_dim, max_norm=1, norm_type=2.0
+    ).type(float_tensor).weight
     r_proj = torch.cat((r_proj, -r_proj), dim=0)
 
     row_idx, col_idx = [], []
@@ -133,6 +140,7 @@ def convert_2_data(
         col_idx.append(i_nid)
         edge_attrs.append([relation_map['interact'], row['rating']])
 
+    # Create masks
     rating_mask = torch.ones(ratings.shape[0])
     rating_edge_mask = torch.cat(
         (
@@ -336,29 +344,29 @@ class MovieLens(InMemoryDataset):
         return '{}-{}'.format(self.__class__.__name__, self.name.capitalize())
 
 
-if __name__ == '__main__':
-    import torch
-    from torch_geometric.datasets import MovieLens
-    import os.path as osp
-    import pdb
-
-    torch.random.manual_seed(2019)
-
-    if torch.cuda.is_available():
-        float_tensor = torch.cuda.FloatTensor
-        long_tensor = torch.cuda.LongTensor
-        bool_tensor = torch.cuda.BoolTensor
-    else:
-        float_tensor = torch.FloatTensor
-        long_tensor = torch.LongTensor
-        bool_tensor = torch.BoolTensor
-    tensor_type = (float_tensor, bool_tensor, long_tensor)
-
-    emb_dim = 300
-    repr_dim = 64
-    batch_size = 128
-
-    root = osp.join('.', 'tmp', 'ml')
-    dataset = MovieLens(root, '1m', tensor_type, train_ratio=0.8, debug=True, sec_order=True)
-    data = dataset.data
-    pdb.set_trace()
+# if __name__ == '__main__':
+#     import torch
+#     from torch_geometric.datasets import MovieLens
+#     import os.path as osp
+#     import pdb
+#
+#     torch.random.manual_seed(2019)
+#
+#     if torch.cuda.is_available():
+#         float_tensor = torch.cuda.FloatTensor
+#         long_tensor = torch.cuda.LongTensor
+#         bool_tensor = torch.cuda.BoolTensor
+#     else:
+#         float_tensor = torch.FloatTensor
+#         long_tensor = torch.LongTensor
+#         bool_tensor = torch.BoolTensor
+#     tensor_type = (float_tensor, bool_tensor, long_tensor)
+#
+#     emb_dim = 300
+#     repr_dim = 64
+#     batch_size = 128
+#
+#     root = osp.join('.', 'tmp', 'ml')
+#     dataset = MovieLens(root, '1m', tensor_type, train_ratio=0.8, debug=True, sec_order=True)
+#     data = dataset.data
+#     pdb.set_trace()

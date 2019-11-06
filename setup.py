@@ -14,6 +14,10 @@ install_requires = [
     'rdflib',
     'h5py',
     'googledrivedownloader',
+    'tqdm',
+    'torch-sparse',
+    'torch-cluster',
+    'torch-scatter'
 ]
 setup_requires = ['pytest-runner']
 tests_require = ['pytest', 'pytest-cov', 'mock']

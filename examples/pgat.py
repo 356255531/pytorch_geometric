@@ -16,10 +16,12 @@ if torch.cuda.is_available():
     float_tensor = torch.cuda.FloatTensor
     long_tensor = torch.cuda.LongTensor
     bool_tensor = torch.cuda.BoolTensor
+    device = 'cuda'
 else:
     float_tensor = torch.FloatTensor
     long_tensor = torch.LongTensor
     bool_tensor = torch.BoolTensor
+    device = 'cpu'
 tensor_type = (float_tensor, bool_tensor, long_tensor)
 
 epochs = 40
@@ -27,8 +29,9 @@ emb_dim = 300
 repr_dim = 64
 kg_batch_size = 1024
 cf_batch_size = 1024
+sec_order_batch_size = 1024
 path = osp.join(osp.dirname(osp.realpath(__file__)), '..', 'data', '1m')
-data = MovieLens(path, '1m', tensor_type=tensor_type, train_ratio=0.8, sec_order=True).data
+data = MovieLens(path, '1m', tensor_type=tensor_type, train_ratio=0.8, sec_order=True, debug=0.01).data
 
 
 class GCNNet(torch.nn.Module):
@@ -74,13 +77,20 @@ class PACNet(torch.nn.Module):
         pass
 
     def forward(self, x, edge_index, sec_order_edge_index):
+        '''
+
+        :param x:
+        :param edge_index: np.array, [2, N]
+        :param sec_order_edge_index: [3, M]
+        :return:
+        '''
         x = F.relu(self.conv1(x, edge_index))
         x = F.dropout(x, training=self.training)
         x = self.conv2(x, sec_order_edge_index)
         return x
 
 
-model = PACNet()
+model = PACNet().to(device)
 
 edge_iter = DataLoader(
     TensorDataset(
@@ -145,12 +155,13 @@ for i in range(epochs):
     for batch in pbar:
         edge_index, edge_attr = batch
         batch_train_sec_order_edge_index = \
-            train_sec_order_edge_index[:, np.random.choice(n_train_sec_order_edge_index, 1024)]
+            train_sec_order_edge_index[:, np.random.choice(n_train_sec_order_edge_index, sec_order_batch_size)]
         x = model(
             data.x,
             data.edge_index[:, data.train_edge_mask],
-            torch.from_numpy(train_sec_order_edge_index)
+            torch.from_numpy(batch_train_sec_order_edge_index).type(long_tensor)
         )
+
         head = x[edge_index[:, 0]]
         tail = x[edge_index[:, 1]]
         est_rating = torch.sum(head * tail, dim=1).reshape(-1, 1)
@@ -169,12 +180,12 @@ for i in range(epochs):
     with torch.no_grad():
         for batch in pbar:
             edge_index, edge_attr = batch
-            batch_train_sec_order_edge_index = \
-                train_sec_order_edge_index[:, np.random.choice(n_train_sec_order_edge_index, 1024)]
+            batch_test_sec_order_edge_index = \
+                train_sec_order_edge_index[:, np.random.choice(n_train_sec_order_edge_index, sec_order_batch_size)]
             x = model(
                 data.x,
                 data.edge_index[:, data.train_edge_mask],
-                torch.from_numpy(train_sec_order_edge_index)
+                torch.from_numpy(batch_test_sec_order_edge_index).type(long_tensor)
             )
             head = x[edge_index[:, 0]]
             tail = x[edge_index[:, 1]]
