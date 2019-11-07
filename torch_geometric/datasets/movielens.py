@@ -51,8 +51,7 @@ def reindex_df(users, items, interactions):
 def convert_2_data(
         users, items, ratings,
         emb_dim, repr_dim,
-        train_ratio, sec_order,
-        tensor_type):
+        train_ratio, sec_order):
     """
     Convert pandas.DataFrame to torch-geometirc graph dataset
 
@@ -61,39 +60,41 @@ def convert_2_data(
         n_nodes = n_users + n_items + n_genders + n_occupation + n_genres
 
     """
-    float_tensor, bool_tensor, long_tensor = tensor_type
-
     n_users = users.shape[0]
     n_items = items.shape[0]
-    n_interactions = ratings.shape[0]
 
     genders = ['M', 'F']
     n_genders = len(genders)
-    gender_map = {r: i for i, r in enumerate(genders)}
 
     occupations = list(users.occupation.unique())
     n_occupations = len(occupations)
-    occupation_map = {r: i for i, r in enumerate(occupations)}
 
-    n_genres = 18
+    genres = list(items.keys()[3:21])
+    n_genres = len(genres)
 
     relations = ['gender', 'occupation', 'genre', 'interact', '-gender', '-occupation', '-genre', '-interact']
     n_relations = len(relations)
-    relation_map = {r: i for i, r in enumerate(relations)}
 
+    # Bulid node id
     n_nodes = n_users + n_items + n_genders + n_occupations + n_genres
+    users['node_id'] = users['uid']
+    items['node_id'] = n_users + items['iid']
+    genders_node_id_map = {gender: n_users + n_items + i for i, gender in enumerate(genders)}
+    occupation_node_id_map = {occupation: n_users + n_items + n_genders + i for i, occupation in enumerate(occupations)}
+    genres_node_id_map = {genre: n_users + n_items + n_genders + n_occupations + i for i, genre in enumerate(genres)}
 
     # Node embedding
-    x = torch.nn.Embedding(n_nodes, emb_dim, max_norm=1, norm_type=2.0).type(float_tensor).weight
+    x = torch.nn.Embedding(n_nodes, emb_dim, max_norm=1, norm_type=2.0).weight
 
     # Relation embedding
-    r_emb = torch.nn.Embedding(n_relations, repr_dim, max_norm=1, norm_type=2.0).type(float_tensor).weight
+    r_emb = torch.nn.Embedding(n_relations, repr_dim, max_norm=1, norm_type=2.0).weight
     # Knowledge graph projection embedding
     r_proj = torch.nn.Embedding(
         n_relations // 2, emb_dim * repr_dim, max_norm=1, norm_type=2.0
-    ).type(float_tensor).weight
+    ).weight
     r_proj = torch.cat((r_proj, -r_proj), dim=0)
 
+    # Start creating edges
     row_idx, col_idx = [], []
     edge_attrs = []
 
@@ -105,72 +106,70 @@ def convert_2_data(
         occupation = row['occupation']
 
         u_nid = row['uid']
-        gender_nid = n_users + n_items + gender_map[gender]
+        gender_nid = genders_node_id_map[gender]
         row_idx.append(u_nid)
         col_idx.append(gender_nid)
-        edge_attrs.append([relation_map['gender'], -1])
+        edge_attrs.append([relations.index('gender'), -1])
 
-        occupation_nid = n_users + n_items + n_genders + occupation_map[occupation]
+        occupation_nid = occupation_node_id_map[occupation]
         row_idx.append(u_nid)
         col_idx.append(occupation_nid)
-        edge_attrs.append([relation_map['occupation'], -1])
+        edge_attrs.append([relations.index('occupation'), -1])
     rating_begin += 2 * users.shape[0]
 
     print('Creating item property edges...')
     for _, row in tqdm.tqdm(items.iterrows(), total=items.shape[0]):
-        i_nid = n_users + row['iid']
+        i_nid = row['node_id']
 
-        genres = list(row[3:])
-
-        for idx, genre in enumerate(genres):
-            if not genre:
+        for genre in genres:
+            if not row[genre]:
                 continue
-            g_nid = n_users + n_items + n_genders + n_occupations + idx
+            g_nid = genres_node_id_map[genre]
             row_idx.append(i_nid)
             col_idx.append(g_nid)
-            edge_attrs.append([relation_map['genre'], -1])
+            edge_attrs.append([relations.index('genre'), -1])
             rating_begin += 1
 
     print('Creating rating property edges...')
     for _, row in tqdm.tqdm(ratings.iterrows(), total=ratings.shape[0]):
-        u_nid = row['uid']
-        i_nid = n_users + row['iid']
+        u_nid = users.loc[users['uid'] == row['uid']]['node_id']
+        i_nid = items.loc[items['iid'] == row['iid']]['node_id']
 
         row_idx.append(u_nid)
         col_idx.append(i_nid)
-        edge_attrs.append([relation_map['interact'], row['rating']])
+        edge_attrs.append([relations.index('interact'), row['rating']])
 
     # Create masks
-    rating_mask = torch.ones(ratings.shape[0])
+    rating_mask = torch.ones(ratings.shape[0], dtype=torch.bool)
     rating_edge_mask = torch.cat(
         (
-            torch.zeros(rating_begin),
+            torch.zeros(rating_begin, dtype=torch.bool),
             rating_mask,
-            torch.zeros(rating_begin),
+            torch.zeros(rating_begin, dtype=torch.bool),
             rating_mask),
-    ).type(bool_tensor)
+    )
     if train_ratio is not None:
-        train_rating_mask = torch.zeros(ratings.shape[0])
-        test_rating_mask = torch.ones(ratings.shape[0])
-        train_rating_idx = rd.sample([i for i in range(ratings.shape[0])], int(ratings.shape[0]*0.8))
+        train_rating_mask = torch.zeros(ratings.shape[0], dtype=torch.bool)
+        test_rating_mask = torch.ones(ratings.shape[0], dtype=torch.bool)
+        train_rating_idx = rd.sample([i for i in range(ratings.shape[0])], int(ratings.shape[0] * train_ratio))
         train_rating_mask[train_rating_idx] = 1
         test_rating_mask[train_rating_idx] = 0
 
         train_edge_mask = torch.cat(
             (
-                torch.ones(rating_begin),
+                torch.ones(rating_begin, dtype=torch.bool),
                 train_rating_mask,
-                torch.ones(rating_begin),
+                torch.ones(rating_begin, dtype=torch.bool),
                 train_rating_mask)
-        ).type(bool_tensor)
+        )
 
         test_edge_mask = torch.cat(
             (
-                torch.ones(rating_begin),
+                torch.ones(rating_begin, dtype=torch.bool),
                 test_rating_mask,
-                torch.ones(rating_begin),
+                torch.ones(rating_begin, dtype=torch.bool),
                 test_rating_mask)
-        ).type(bool_tensor)
+        )
 
     print('Creating reverse user property edges...')
     for _, row in tqdm.tqdm(users.iterrows(), total=users.shape[0]):
@@ -178,63 +177,67 @@ def convert_2_data(
         occupation = row['occupation']
 
         u_nid = row['uid']
-        gender_nid = n_users + n_items + gender_map[gender]
+        gender_nid = genders_node_id_map[gender]
         col_idx.append(u_nid)
         row_idx.append(gender_nid)
-        edge_attrs.append([relation_map['-gender'], -1])
+        edge_attrs.append([relations.index('-gender'), -1])
 
-        occupation_nid = n_users + n_items + n_genders + occupation_map[occupation]
+        occupation_nid = occupation_node_id_map[occupation]
         col_idx.append(u_nid)
         row_idx.append(occupation_nid)
-        edge_attrs.append([relation_map['-occupation'], -1])
+        edge_attrs.append([relations.index('-occupation'), -1])
+    rating_begin += 2 * users.shape[0]
 
     print('Creating reverse item property edges...')
     for _, row in tqdm.tqdm(items.iterrows(), total=items.shape[0]):
-        i_nid = n_users + row['iid']
+        i_nid = row['node_id']
 
-        genres = list(row[3:])
-
-        for idx, genre in enumerate(genres):
-            if not genre:
+        for genre in genres:
+            if not row[genre]:
                 continue
-            g_nid = n_users + n_items + n_genders + n_occupations + idx
+            g_nid = genres_node_id_map[genre]
             col_idx.append(i_nid)
             row_idx.append(g_nid)
-            edge_attrs.append([relation_map['-genre'], -1])
+            edge_attrs.append([relations.index('-genre'), -1])
+            rating_begin += 1
 
     print('Creating reverse rating property edges...')
     for _, row in tqdm.tqdm(ratings.iterrows(), total=ratings.shape[0]):
-        u_nid = row['uid']
-        i_nid = n_users + row['iid']
+        u_nid = users.loc[users['uid'] == row['uid']]['node_id']
+        i_nid = items.loc[items['iid'] == row['iid']]['node_id']
 
         col_idx.append(u_nid)
         row_idx.append(i_nid)
-        edge_attrs.append([relation_map['-interact'], row['rating']])
+        edge_attrs.append([relations.index('-interact'), row['rating']])
 
+    row_idx = [int(idx) for idx in row_idx]
+    col_idx = [int(idx) for idx in col_idx]
     row_idx = np.array(row_idx).reshape(1, -1)
     col_idx = np.array(col_idx).reshape(1, -1)
     edge_index = np.concatenate((row_idx, col_idx), axis=0)
-    edge_index = torch.from_numpy(edge_index).type(long_tensor)
+    edge_index = torch.from_numpy(edge_index).long()
     edge_attrs = np.array(edge_attrs)
-    edge_attrs = torch.from_numpy(edge_attrs).type(long_tensor)
+    edge_attrs = torch.from_numpy(edge_attrs)
 
     kwargs = {
         'x': x, 'edge_index': edge_index, 'edge_attr': edge_attrs,
         'rating_edge_mask': rating_edge_mask, 'r_emb': r_emb, 'r_proj': r_proj,
-        'n_users': n_users, 'n_items': n_items, 'n_interactions': n_interactions,
-        'relation_map': relation_map
-
+        'users': users, 'ratings': ratings, 'movies': items,
+        'genders_node_id_map': genders_node_id_map, 'occupation_node_id_map': occupation_node_id_map,
+        'genres_node_id_map': genres_node_id_map
     }
+
+    print('Creating second order edges...')
     if train_ratio is not None:
         kwargs['train_edge_mask'] = train_edge_mask
         kwargs['test_edge_mask'] = test_edge_mask
         if sec_order:
             kwargs['train_sec_order_edge_index'] = \
-                get_sec_order_edge(edge_index[:, train_edge_mask], x)
-            kwargs['test_sec_order_edge_index'] = \
-                get_sec_order_edge(edge_index, x)
+                get_sec_order_edge(edge_index[:, train_edge_mask])
+            kwargs['n_sec_order_edge'] = kwargs['train_sec_order_edge_index'].shape[1]
     else:
-        kwargs['sec_order_edge_index'] = get_sec_order_edge(edge_index, x)
+        kwargs['sec_order_edge_index'] = get_sec_order_edge(edge_index)
+        kwargs['n_sec_order_edge'] = kwargs['sec_order_edge_index'].shape[1]
 
     return Data(**kwargs)
 
@@ -256,10 +259,10 @@ class MovieLens(InMemoryDataset):
     def __init__(self,
                  root,
                  name,
-                 tensor_type,
                  sec_order=False,
                  emb_dim=300,
                  repr_dim=64,
+                 n_core=10,
                  transform=None,
                  pre_transform=None,
                  pre_filter=None,
@@ -268,15 +271,16 @@ class MovieLens(InMemoryDataset):
         assert self.name in ['1m']
         self.emb_dim = emb_dim
         self.repr_dim = repr_dim
+        self.n_core = n_core
 
         self.train_ratio = kwargs.get('train_ratio', None)
         self.debug = kwargs.get('debug', False)
-        self.suffix = self.build_suffix()
         self.sec_order = sec_order
-        self.tensor_type = tensor_type
+        self.suffix = self.build_suffix()
         super(MovieLens, self).__init__(root, transform, pre_transform, pre_filter)
 
         self.data, self.slices = torch.load(self.processed_paths[0])
+        print('Graph params: {}'.format(self.data))
 
         print('Dataset loaded!')
 
@@ -311,9 +315,9 @@ class MovieLens(InMemoryDataset):
         ratings = ratings.join(item_count, on='iid')
         ratings = ratings.join(user_count, on='uid')
 
-        # delete ratings have movie and user count less than 10
-        ratings = ratings[ratings.movie_count > 9]
-        ratings = ratings[ratings.user_count > 9]
+        # delete ratings have movie and user count less than self.n_core
+        ratings = ratings[ratings.movie_count > self.n_core]
+        ratings = ratings[ratings.user_count > self.n_core]
 
         # drop users and movies which do not exist in ratings
         users = users[users.uid.isin(ratings['uid'])]
@@ -323,50 +327,41 @@ class MovieLens(InMemoryDataset):
 
         data = convert_2_data(
             users, items, ratings,
-            self.emb_dim, self.repr_dim, self.train_ratio, self.sec_order,
-            tensor_type=self.tensor_type)
+            self.emb_dim, self.repr_dim, self.train_ratio, self.sec_order)
 
         torch.save(self.collate([data]), self.processed_paths[0])
+
+    def __repr__(self):
+        return '{}-{}'.format(self.__class__.__name__, self.name.capitalize())
 
     def build_suffix(self):
         suffixes = []
         if self.train_ratio is not None:
-            suffixes.append('train')
+            suffixes.append('train_{}'.format(self.train_ratio))
         if self.debug:
-            suffixes.append('debug')
+            suffixes.append('debug_{}'.format(self.debug))
+        if self.sec_order:
+            suffixes.append('sec_order')
         if not suffixes:
             suffix = ''
         else:
             suffix = '_'.join(suffixes)
         return '_' + suffix
 
-    def __repr__(self):
-        return '{}-{}'.format(self.__class__.__name__, self.name.capitalize())
 
+if __name__ == '__main__':
+    import torch
+    from torch_geometric.datasets import MovieLens
+    import os.path as osp
+    import pdb
 
-# if __name__ == '__main__':
-#     import torch
-#     from torch_geometric.datasets import MovieLens
-#     import os.path as osp
-#     import pdb
-#
-#     torch.random.manual_seed(2019)
-#
-#     if torch.cuda.is_available():
-#         float_tensor = torch.cuda.FloatTensor
-#         long_tensor = torch.cuda.LongTensor
-#         bool_tensor = torch.cuda.BoolTensor
-#     else:
-#         float_tensor = torch.FloatTensor
-#         long_tensor = torch.LongTensor
-#         bool_tensor = torch.BoolTensor
-#     tensor_type = (float_tensor, bool_tensor, long_tensor)
-#
-#     emb_dim = 300
-#     repr_dim = 64
-#     batch_size = 128
-#
-#     root = osp.join('.', 'tmp', 'ml')
-#     dataset = MovieLens(root, '1m', tensor_type, train_ratio=0.8, debug=True, sec_order=True)
-#     data = dataset.data
-#     pdb.set_trace()
+    torch.random.manual_seed(2019)
+
+    emb_dim = 300
+    repr_dim = 64
+    batch_size = 128
+
+    root = osp.join('.', 'tmp', 'ml')
+    dataset = MovieLens(root, '1m', debug=0.01, train_ratio=0.8)
+    data = dataset.data
+    pdb.set_trace()

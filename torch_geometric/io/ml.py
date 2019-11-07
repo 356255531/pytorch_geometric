@@ -4,7 +4,7 @@ from os.path import join
 import numpy as np
 
 
-def read_ml(raw_dir, debug=0.1):
+def read_ml(raw_dir, debug=None):
     """
     Read the movielens dataset from .dat file
     :param raw_dir: the path to raw files (users.dat, movies.dat, ratings.dat)
@@ -57,7 +57,7 @@ def read_ml(raw_dir, debug=0.1):
             })
     ratings = pd.DataFrame(ratings)
 
-    if debug is not None:
+    if debug:
         df_idx = np.random.choice(np.arange(ratings.shape[0]), int(ratings.shape[0] * debug))
         ratings = ratings.iloc[df_idx]
 
