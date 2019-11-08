@@ -268,7 +268,7 @@ def single_run_with_kg(data, model, loss_func, train_args, task_args):
         torch.cuda.synchronize()
 
 
-def sec_order_single_run_with_kg(data, model, loss_func, train_args, task_args):
+def sec_order_single_run_with_kg(data, model, loss_func, dataset_args, train_args, task_args):
     data.to(device)
     model.to(device).reset_parameters()
     if device == 'cuda':
@@ -279,9 +279,9 @@ def sec_order_single_run_with_kg(data, model, loss_func, train_args, task_args):
     edge_iter, train_rating_edge_iter, test_rating_edge_iter = \
         get_iters(data, batch_size=train_args['batch_size'])
 
-    opt_kg = Adam([data.x, data.r_proj, data.r_emb], lr=1e-3, weight_decay=train_args['weight_decay'])
+    opt_kg = Adam([data.x, data.r_proj, data.r_emb], lr=train_args['lr'], weight_decay=train_args['weight_decay'])
     params = [param for param in model.parameters()]
-    opt_cf = Adam(params + [data.x, data.r_proj, data.r_emb], lr=1e-3, weight_decay=train_args['weight_decay'])
+    opt_cf = Adam(params + [data.x, data.r_proj, data.r_emb], lr=train_args['lr'], weight_decay=train_args['weight_decay'])
 
     train_sec_order_edge_index = data.train_sec_order_edge_index[0]
 
@@ -332,7 +332,14 @@ def sec_order_single_run_with_kg(data, model, loss_func, train_args, task_args):
             if cf_val_loss > tmp.mean().item():
                 break
 
-    weights_path = osp.join(train_args['weights_path'], 'model_weights')
+    weights_path = os.path.expanduser(os.path.normpath(train_args['weights_path']))
+    makedirs(weights_path)
+    file_name = 'model_weights'
+    if dataset_args['debug']:
+        file_name += 'debug_{}.pth'.format(dataset_args['debug'])
+    else:
+        file_name += '.pth'
+    weights_path = os.path.join(weights_path, file_name)
     torch.save(model.state_dict(), weights_path)
 
     if torch.cuda.is_available():

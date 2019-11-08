@@ -16,9 +16,10 @@ parser = argparse.ArgumentParser()
 parser.add_argument("--n_core", type=int, default=10, help="")
 
 parser.add_argument("--hidden_size", type=int, default=128, help="")
+parser.add_argument("--heads", type=int, default=128, help="")
 
 parser.add_argument("--train_ratio", type=float, default=0.8, help="")
-parser.add_argument("--debug", default=0.01, help="")
+parser.add_argument("--debug", default=False, help="")
 parser.add_argument("--epochs", type=int, default=40, help="")
 parser.add_argument("--batch_size", type=int, default=1024, help="")
 parser.add_argument("--weight_decay", type=float, default=0, help="")
@@ -28,7 +29,7 @@ parser.add_argument("--repr_dim", type=int, default=64, help="")
 
 args = parser.parse_args()
 
-path = osp.join(osp.dirname(osp.realpath(__file__)), '..', 'data', '1m')
+path = osp.join(osp.dirname(osp.realpath(__file__)), 'data', '1m')
 
 dataset_args = {
     'root': path, 'name': '1m', 'emb_dim': args.emb_dim, 'repr_dim': args.repr_dim,
@@ -46,8 +47,12 @@ data = MovieLens(**dataset_args).data
 class PGAT(torch.nn.Module):
     def __init__(self):
         super(PGAT, self).__init__()
-        self.conv1 = GATConv(300, 16, heads=4, dropout=0.6)
-        self.conv2 = PAConv(64, 8, heads=4, dropout=0.6)
+        self.conv1 = GATConv(
+            args.emb_dim, int(args.hidden_size // args.heads),
+            heads=args.heads, dropout=0.6)
+        self.conv2 = PAConv(
+            int(args.hidden_size // args.heads) * args.heads, args.repr_dim,
+            heads=1, dropout=0.6)
         # self.conv1 = ChebConv(data.num_features, 16, K=2)
         # self.conv2 = ChebConv(16, data.num_features, K=2)
 

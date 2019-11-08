@@ -362,6 +362,6 @@ if __name__ == '__main__':
     batch_size = 128
 
     root = osp.join('.', 'tmp', 'ml')
-    dataset = MovieLens(root, '1m', debug=0.01, train_ratio=0.8)
+    dataset = MovieLens(root, '1m', debug=0.1, train_ratio=0.8)
     data = dataset.data
     pdb.set_trace()
