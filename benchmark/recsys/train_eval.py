@@ -45,20 +45,13 @@ def get_iters(data, batch_size=128):
     return edge_iter, train_rating_edge_iter, test_rating_edge_iter
 
 
-def train_kg_single_epoch(epoch, edge_iter, data, loss_func, opt_kg, task_args):
+def train_kg_single_epoch(epoch, model, edge_iter, opt_kg):
     loss = float('inf')
     losses = []
     pbar = tqdm.tqdm(edge_iter, total=len(edge_iter))
     for batch in pbar:
         edge_index, edge_attr = batch
-        r_idx = edge_attr[:, 0]
-        x = data.x
-        r_emb = data.r_emb[r_idx]
-        r_proj = data.r_proj[r_idx].reshape(-1, task_args['emb_dim'], task_args['repr_dim'])
-        proj_head = torch.matmul(x[edge_index[:, :1]], r_proj).reshape(-1, task_args['repr_dim'])
-        proj_tail = torch.matmul(x[edge_index[:, 1:2]], r_proj).reshape(-1, task_args['repr_dim'])
-
-        loss_t = loss_func(r_emb + proj_head, proj_tail)
+        loss_t = model.get_kg_loss(edge_index, edge_attr)
 
         opt_kg.zero_grad()
         loss_t.backward()
@@ -70,24 +63,17 @@ def train_kg_single_epoch(epoch, edge_iter, data, loss_func, opt_kg, task_args):
     return loss
 
 
-def val_kg_single_epoch(epoch, test_rating_edge_iter, data, loss_func, task_args):
+def val_kg_single_epoch(epoch, kg_model, test_rating_edge_iter):
     loss = float('inf')
     losses = []
     pbar = tqdm.tqdm(test_rating_edge_iter, total=len(test_rating_edge_iter))
     for batch in pbar:
         edge_index, edge_attr = batch
-        r_idx = edge_attr[:, 0]
-        x = data.x
-        r_emb = data.r_emb[r_idx]
-        r_proj = data.r_proj[r_idx].reshape(-1, task_args['emb_dim'], task_args['repr_dim'])
-        proj_head = torch.matmul(x[edge_index[:, :1]], r_proj).reshape(-1, task_args['repr_dim'])
-        proj_tail = torch.matmul(x[edge_index[:, 1:2]], r_proj).reshape(-1, task_args['repr_dim'])
-
-        loss_t = loss_func(r_emb + proj_head, proj_tail)
+        loss_t = kg_model.get_kg_loss(edge_index, edge_attr)
 
         losses.append(float(loss_t.detach()))
         loss = np.mean(losses)
-        pbar.set_description('Epoch: {}, Train KG loss: {:.3f}'.format(epoch, loss))
+        pbar.set_description('Epoch: {}, Val KG loss: {:.3f}'.format(epoch, loss))
     return loss
 
 
@@ -99,7 +85,6 @@ def train_cf_single_epoch(epoch, model, train_rating_edge_iter, data, loss_func,
     for batch in pbar:
         edge_index, edge_attr = batch
         x = model(
-            data.x,
             data.edge_index[:, data.train_edge_mask],
         )
         head = x[edge_index[:, 0]]
@@ -119,7 +104,7 @@ def train_cf_single_epoch(epoch, model, train_rating_edge_iter, data, loss_func,
     return loss
 
 
-def eval_cf_single_epoch(epoch, model, test_rating_edge_iter, data, loss_func):
+def val_cf_single_epoch(epoch, model, test_rating_edge_iter, data, loss_func):
     model.training = False
     loss = float('inf')
     losses = []
@@ -127,7 +112,6 @@ def eval_cf_single_epoch(epoch, model, test_rating_edge_iter, data, loss_func):
     for batch in pbar:
         edge_index, edge_attr = batch
         x = model(
-            data.x,
             data.edge_index[:, data.train_edge_mask],
         )
         head = x[edge_index[:, 0]]
@@ -138,14 +122,14 @@ def eval_cf_single_epoch(epoch, model, test_rating_edge_iter, data, loss_func):
 
         losses.append(np.sqrt(float(loss_t.detach()) * 25))
         loss = np.mean(losses)
-        pbar.set_description('Epoch: {}, Train CF loss: {:.3f}'.format(epoch, loss))
+        pbar.set_description('Epoch: {}, Val CF loss: {:.3f}'.format(epoch, loss))
     return loss
 
 
 def train_sec_order_cf_single_epoch(
         epoch, model,
         train_rating_edge_iter, train_sec_order_edge_index, data,
-        loss_func, opt_cf,
+        loss_func, opt,
         train_args):
     n_train_sec_order_edge_index = train_sec_order_edge_index.shape[1]
 
@@ -157,21 +141,18 @@ def train_sec_order_cf_single_epoch(
         edge_index, edge_attr = batch
         batch_train_sec_order_edge_index = \
             train_sec_order_edge_index[:, np.random.choice(n_train_sec_order_edge_index, train_args['batch_size'])]
-        x = model(
-            data.x,
-            data.edge_index[:, data.train_edge_mask],
-            torch.from_numpy(batch_train_sec_order_edge_index)
+        est_rating = model.predict_(
+            model(
+                data.edge_index[:, data.train_edge_mask],
+                torch.from_numpy(batch_train_sec_order_edge_index).to(device)),
+            edge_index
         )
-        head = x[edge_index[:, 0]]
-        tail = x[edge_index[:, 1]]
-
-        est_rating = torch.sum(head * tail, dim=1).reshape(-1, 1)
         rating = edge_attr[:, 1:2].float().detach() / 5
         loss_t = loss_func(est_rating, rating)
 
-        opt_cf.zero_grad()
+        opt.zero_grad()
         loss_t.backward()
-        opt_cf.step()
+        opt.step()
 
         losses.append(np.sqrt(float(loss_t.detach()) * 25))
         loss = np.mean(losses)
@@ -179,48 +160,43 @@ def train_sec_order_cf_single_epoch(
     return loss
 
 
-def eval_sec_order_cf_single_epoch(
+def val_sec_order_cf_single_epoch(
         epoch, model,
         test_rating_edge_iter, train_sec_order_edge_index, data,
-        loss_func):
+        loss_func, train_args):
+    n_train_sec_order_edge_index = train_sec_order_edge_index.shape[1]
+
     model.training = False
     loss = float('inf')
     losses = []
     pbar = tqdm.tqdm(test_rating_edge_iter, total=len(test_rating_edge_iter))
     for batch in pbar:
         edge_index, edge_attr = batch
-        x = model(
-            data.x,
-            data.edge_index[:, data.train_edge_mask],
-            torch.from_numpy(train_sec_order_edge_index)
+        batch_train_sec_order_edge_index = \
+            train_sec_order_edge_index[:, np.random.choice(n_train_sec_order_edge_index, train_args['batch_size'])]
+        est_rating = model.predict_(
+            model(
+                data.edge_index[:, data.train_edge_mask],
+                torch.from_numpy(batch_train_sec_order_edge_index).to(device)),
+            edge_index
         )
-        head = x[edge_index[:, 0]]
-        tail = x[edge_index[:, 1]]
-        est_rating = torch.sum(head * tail, dim=1).reshape(-1, 1)
         rating = edge_attr[:, 1:2].float().detach() / 5
         loss_t = loss_func(est_rating, rating)
 
         losses.append(np.sqrt(float(loss_t.detach()) * 25))
         loss = np.mean(losses)
-        pbar.set_description('Epoch: {}, Train CF loss: {:.3f}'.format(epoch, loss))
+        pbar.set_description('Epoch: {}, Val CF loss: {:.3f}'.format(epoch, loss))
     return loss
 
 
-def single_run_with_kg(data, model, loss_func, train_args, task_args):
+def single_run_with_kg(model, data, loss_func, train_args):
     data.to(device)
     model.to(device).reset_parameters()
-    if device == 'cuda':
-        data.x = data.x.requires_grad_()
-        data.r_proj = data.r_proj.requires_grad_()
-        data.r_emb = data.r_emb.requires_grad_()
 
     edge_iter, train_rating_edge_iter, test_rating_edge_iter = \
         get_iters(data, batch_size=train_args['batch_size'])
 
-    opt_kg = Adam([data.x, data.r_proj, data.r_emb], lr=1e-3, weight_decay=train_args['weight_decay'])
-
-    params = [param for param in model.parameters()]
-    opt_cf = Adam(params + [data.x, data.r_proj, data.r_emb], lr=1e-3, weight_decay=train_args['weight_decay'])
+    opt = Adam(model.parameters(), lr=train_args['lr'], weight_decay=train_args['weight_decay'])
 
     if torch.cuda.is_available():
         torch.cuda.synchronize()
@@ -232,10 +208,10 @@ def single_run_with_kg(data, model, loss_func, train_args, task_args):
     cf_train_losses = []
     cf_val_losses = []
     for epoch in range(1, train_args['epochs'] + 1):
-        kg_train_loss = train_kg_single_epoch(epoch, edge_iter, data, loss_func, opt_kg, task_args)
-        kg_val_loss = val_kg_single_epoch(epoch, test_rating_edge_iter, data, loss_func, task_args)
-        cf_train_loss = train_cf_single_epoch(epoch, model, train_rating_edge_iter, data, loss_func, opt_cf)
-        cf_val_loss = eval_cf_single_epoch(epoch, model, test_rating_edge_iter, data, loss_func)
+        kg_train_loss = train_kg_single_epoch(epoch, model, edge_iter, opt)
+        kg_val_loss = val_kg_single_epoch(epoch, model, test_rating_edge_iter)
+        cf_train_loss = train_cf_single_epoch(epoch, model, train_rating_edge_iter, data, loss_func, opt)
+        cf_val_loss = val_cf_single_epoch(epoch, model, test_rating_edge_iter, data, loss_func)
 
         if kg_val_loss < best_kg_val_loss:
             best_kg_val_loss = kg_val_loss
@@ -268,20 +244,14 @@ def single_run_with_kg(data, model, loss_func, train_args, task_args):
         torch.cuda.synchronize()
 
 
-def sec_order_single_run_with_kg(data, model, loss_func, dataset_args, train_args, task_args):
+def sec_order_single_run_with_kg(model, data, loss_func, train_args):
     data.to(device)
     model.to(device).reset_parameters()
-    if device == 'cuda':
-        data.x = data.x.requires_grad_()
-        data.r_proj = data.r_proj.requires_grad_()
-        data.r_emb = data.r_emb.requires_grad_()
 
     edge_iter, train_rating_edge_iter, test_rating_edge_iter = \
         get_iters(data, batch_size=train_args['batch_size'])
 
-    opt_kg = Adam([data.x, data.r_proj, data.r_emb], lr=train_args['lr'], weight_decay=train_args['weight_decay'])
-    params = [param for param in model.parameters()]
-    opt_cf = Adam(params + [data.x, data.r_proj, data.r_emb], lr=train_args['lr'], weight_decay=train_args['weight_decay'])
+    opt = Adam(model.parameters(), lr=train_args['lr'], weight_decay=train_args['weight_decay'])
 
     train_sec_order_edge_index = data.train_sec_order_edge_index[0]
 
@@ -295,19 +265,19 @@ def sec_order_single_run_with_kg(data, model, loss_func, dataset_args, train_arg
     cf_train_losses = []
     cf_val_losses = []
     for epoch in range(1, train_args['epochs'] + 1):
-        kg_train_loss = train_kg_single_epoch(epoch, edge_iter, data, loss_func, opt_kg, task_args)
-        kg_val_loss = val_kg_single_epoch(epoch, test_rating_edge_iter, data, loss_func, task_args)
+        kg_train_loss = train_kg_single_epoch(epoch, model, edge_iter, opt)
+        kg_val_loss = val_kg_single_epoch(epoch, model, test_rating_edge_iter)
         cf_train_loss = train_sec_order_cf_single_epoch(
             epoch,
             model,
             train_rating_edge_iter, train_sec_order_edge_index, data,
-            loss_func, opt_cf,
+            loss_func, opt,
             train_args
         )
-        cf_val_loss = eval_sec_order_cf_single_epoch(
+        cf_val_loss = val_sec_order_cf_single_epoch(
             epoch, model,
             test_rating_edge_iter, train_sec_order_edge_index, data,
-            loss_func,
+            loss_func, train_args
         )
 
         if kg_val_loss < best_kg_val_loss:
@@ -335,10 +305,6 @@ def sec_order_single_run_with_kg(data, model, loss_func, dataset_args, train_arg
     weights_path = os.path.expanduser(os.path.normpath(train_args['weights_path']))
     makedirs(weights_path)
     file_name = 'model_weights'
-    if dataset_args['debug']:
-        file_name += 'debug_{}.pth'.format(dataset_args['debug'])
-    else:
-        file_name += '.pth'
     weights_path = os.path.join(weights_path, file_name)
     torch.save(model.state_dict(), weights_path)
 

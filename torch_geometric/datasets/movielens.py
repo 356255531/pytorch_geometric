@@ -37,11 +37,9 @@ def reindex_df(users, items, interactions):
     rating_uids = np.array(interactions.uid, dtype=np.int)
     rating_iids = np.array(interactions.iid, dtype=np.int)
     print('reindex user id of ratings...')
-    for uid in tqdm.tqdm(raw_uids):
-        rating_uids[rating_uids == uid] = raw_uid2uid[uid]
+    rating_uids = [raw_uid2uid[rating_uid] for rating_uid in rating_uids]
     print('reindex item id of ratings...')
-    for iid in tqdm.tqdm(raw_iids):
-        rating_iids[rating_iids == iid] = raw_iid2iid[iid]
+    rating_iids = [raw_iid2iid[rating_iid] for rating_iid in rating_iids]
     interactions.loc[:, 'uid'] = rating_uids
     interactions.loc[:, 'iid'] = rating_iids
 
@@ -50,7 +48,6 @@ def reindex_df(users, items, interactions):
 
 def convert_2_data(
         users, items, ratings,
-        emb_dim, repr_dim,
         train_ratio, sec_order):
     """
     Entitiy node include (gender, occupation, genres)
@@ -71,33 +68,18 @@ def convert_2_data(
     n_genres = len(genres)
 
     relations = ['gender', 'occupation', 'genre', 'interact', '-gender', '-occupation', '-genre', '-interact']
-    n_relations = len(relations)
+    num_relations = len(relations)
 
     # Bulid node id
-    n_nodes = n_users + n_items + n_genders + n_occupations + n_genres
+    num_nodes = n_users + n_items + n_genders + n_occupations + n_genres
+
     users['node_id'] = users['uid']
-    items['node_id'] = n_users + items['iid']
+    items['node_id'] = items['iid'] + n_users
+    users_node_id_map = {uid: i for i, uid in enumerate(users['uid'].values)}
+    items_node_id_map = {iid: n_users + i for i, iid in enumerate(items['iid'].values)}
     genders_node_id_map = {gender: n_users + n_items + i for i, gender in enumerate(genders)}
     occupation_node_id_map = {occupation: n_users + n_items + n_genders + i for i, occupation in enumerate(occupations)}
     genres_node_id_map = {genre: n_users + n_items + n_genders + n_occupations + i for i, genre in enumerate(genres)}
-
-<<<<<<< HEAD
-    # Node embedding
-    x = torch.nn.Embedding(n_nodes, emb_dim, max_norm=1, norm_type=2.0).weight
-
-    # Relation embedding
-    r_emb = torch.nn.Embedding(n_relations, repr_dim, max_norm=1, norm_type=2.0).weight
-    # Knowledge graph projection embedding
-    r_proj = torch.nn.Embedding(
-        n_relations // 2, emb_dim * repr_dim, max_norm=1, norm_type=2.0
-    ).weight
-=======
-    x = torch.nn.Embedding(n_nodes, emb_dim, max_norm=1, norm_type=2.0).type(float_tensor).weight
-
-    r_emb = torch.nn.Embedding(n_relations, repr_dim, max_norm=1, norm_type=2.0).type(float_tensor).weight
-    r_proj = torch.nn.Embedding(n_relations // 2, emb_dim * repr_dim, max_norm=1, norm_type=2.0).type(float_tensor).weight
->>>>>>> parent of a65f9212... add docs
-    r_proj = torch.cat((r_proj, -r_proj), dim=0)
 
     # Start creating edges
     row_idx, col_idx = [], []
@@ -124,7 +106,7 @@ def convert_2_data(
 
     print('Creating item property edges...')
     for _, row in tqdm.tqdm(items.iterrows(), total=items.shape[0]):
-        i_nid = row['node_id']
+        i_nid = items_node_id_map[row['iid']]
 
         for genre in genres:
             if not row[genre]:
@@ -136,20 +118,15 @@ def convert_2_data(
             rating_begin += 1
 
     print('Creating rating property edges...')
-    for _, row in tqdm.tqdm(ratings.iterrows(), total=ratings.shape[0]):
-        u_nid = users.loc[users['uid'] == row['uid']]['node_id']
-        i_nid = items.loc[items['iid'] == row['iid']]['node_id']
+    row_idx += list(users.iloc[ratings['uid']]['node_id'].values)
+    col_idx += list(items.iloc[ratings['iid']]['node_id'].values)
 
-        row_idx.append(u_nid)
-        col_idx.append(i_nid)
-        edge_attrs.append([relations.index('interact'), row['rating']])
+    rating_relation = np.ones(ratings.shape[0]) * relations.index('interact')
+    inc_edge_attrs = [[r, rat] for r, rat in zip(rating_relation, ratings['rating'].values)]
+    edge_attrs += inc_edge_attrs
 
-<<<<<<< HEAD
-    # Create masks
+    print('Building masks...')
     rating_mask = torch.ones(ratings.shape[0], dtype=torch.bool)
-=======
-    rating_mask = torch.ones(ratings.shape[0])
->>>>>>> parent of a65f9212... add docs
     rating_edge_mask = torch.cat(
         (
             torch.zeros(rating_begin, dtype=torch.bool),
@@ -185,7 +162,7 @@ def convert_2_data(
         gender = row['gender']
         occupation = row['occupation']
 
-        u_nid = row['uid']
+        u_nid = users_node_id_map[row['uid']]
         gender_nid = genders_node_id_map[gender]
         col_idx.append(u_nid)
         row_idx.append(gender_nid)
@@ -199,7 +176,7 @@ def convert_2_data(
 
     print('Creating reverse item property edges...')
     for _, row in tqdm.tqdm(items.iterrows(), total=items.shape[0]):
-        i_nid = row['node_id']
+        i_nid = items_node_id_map[row['iid']]
 
         for genre in genres:
             if not row[genre]:
@@ -211,13 +188,12 @@ def convert_2_data(
             rating_begin += 1
 
     print('Creating reverse rating property edges...')
-    for _, row in tqdm.tqdm(ratings.iterrows(), total=ratings.shape[0]):
-        u_nid = users.loc[users['uid'] == row['uid']]['node_id']
-        i_nid = items.loc[items['iid'] == row['iid']]['node_id']
+    col_idx += list(users.iloc[ratings['uid']]['node_id'].values)
+    row_idx += list(items.iloc[ratings['iid']]['node_id'].values)
 
-        col_idx.append(u_nid)
-        row_idx.append(i_nid)
-        edge_attrs.append([relations.index('-interact'), row['rating']])
+    rating_relation = np.ones(ratings.shape[0]) * relations.index('-interact')
+    inc_edge_attrs = [[r, rat] for r, rat in zip(rating_relation, ratings['rating'].values)]
+    edge_attrs += inc_edge_attrs
 
     row_idx = [int(idx) for idx in row_idx]
     col_idx = [int(idx) for idx in col_idx]
@@ -226,27 +202,30 @@ def convert_2_data(
     edge_index = np.concatenate((row_idx, col_idx), axis=0)
     edge_index = torch.from_numpy(edge_index).long()
     edge_attrs = np.array(edge_attrs)
-    edge_attrs = torch.from_numpy(edge_attrs)
+    edge_attrs = torch.from_numpy(edge_attrs).long()
 
     kwargs = {
-        'x': x, 'edge_index': edge_index, 'edge_attr': edge_attrs,
-        'rating_edge_mask': rating_edge_mask, 'r_emb': r_emb, 'r_proj': r_proj,
-        'users': users, 'ratings': ratings, 'movies': items,
+        'num_nodes': num_nodes, 'num_relations': num_relations,
+        'edge_index': edge_index, 'edge_attr': edge_attrs,
+        'rating_edge_mask': rating_edge_mask,
+        'users': users, 'ratings': ratings, 'items': items,
         'genders_node_id_map': genders_node_id_map, 'occupation_node_id_map': occupation_node_id_map,
         'genres_node_id_map': genres_node_id_map
     }
 
-    print('Creating second order edges...')
     if train_ratio is not None:
         kwargs['train_edge_mask'] = train_edge_mask
         kwargs['test_edge_mask'] = test_edge_mask
         if sec_order:
+            print('Creating second order edges...')
             kwargs['train_sec_order_edge_index'] = \
                 get_sec_order_edge(edge_index[:, train_edge_mask])
             kwargs['n_sec_order_edge'] = kwargs['train_sec_order_edge_index'].shape[1]
     else:
-        kwargs['sec_order_edge_index'] = get_sec_order_edge(edge_index)
-        kwargs['n_sec_order_edge'] = kwargs['sec_order_edge_index'].shape[1]
+        if sec_order:
+            print('Creating second order edges...')
+            kwargs['sec_order_edge_index'] = get_sec_order_edge(edge_index)
+            kwargs['n_sec_order_edge'] = kwargs['sec_order_edge_index'].shape[1]
 
     return Data(**kwargs)
 
@@ -269,8 +248,6 @@ class MovieLens(InMemoryDataset):
                  root,
                  name,
                  sec_order=False,
-                 emb_dim=300,
-                 repr_dim=64,
                  n_core=10,
                  transform=None,
                  pre_transform=None,
@@ -278,8 +255,6 @@ class MovieLens(InMemoryDataset):
                  **kwargs):
         self.name = name.lower()
         assert self.name in ['1m']
-        self.emb_dim = emb_dim
-        self.repr_dim = repr_dim
         self.n_core = n_core
 
         self.train_ratio = kwargs.get('train_ratio', None)
@@ -334,11 +309,9 @@ class MovieLens(InMemoryDataset):
 
         users, items, ratings = reindex_df(users, items, ratings)
 
-        data = convert_2_data(
-            users, items, ratings,
-            self.emb_dim, self.repr_dim, self.train_ratio, self.sec_order)
+        data = convert_2_data(users, items, ratings,self.train_ratio, self.sec_order)
 
-        torch.save(self.collate([data]), self.processed_paths[0])
+        torch.save(self.collate([data]), self.processed_paths[0], pickle_protocol=4)
 
     def __repr__(self):
         return '{}-{}'.format(self.__class__.__name__, self.name.capitalize())
@@ -370,36 +343,7 @@ if __name__ == '__main__':
     repr_dim = 64
     batch_size = 128
 
-<<<<<<< HEAD
     root = osp.join('.', 'tmp', 'ml')
-    dataset = MovieLens(root, '1m', debug=0.1, train_ratio=0.8)
+    dataset = MovieLens(root, '1m', sec_order=True, train_ratio=0.8)
     data = dataset.data
     pdb.set_trace()
-=======
-if __name__ == '__main__':
-    import torch
-    from torch_geometric.datasets import MovieLens
-    import os.path as osp
-    import pdb
-
-    torch.random.manual_seed(2019)
-
-    if torch.cuda.is_available():
-        float_tensor = torch.cuda.FloatTensor
-        long_tensor = torch.cuda.LongTensor
-        bool_tensor = torch.cuda.BoolTensor
-    else:
-        float_tensor = torch.FloatTensor
-        long_tensor = torch.LongTensor
-        bool_tensor = torch.BoolTensor
-    tensor_type = (float_tensor, bool_tensor, long_tensor)
-
-    emb_dim = 300
-    repr_dim = 64
-    batch_size = 128
-
-    root = osp.join('.', 'tmp', 'ml')
-    dataset = MovieLens(root, '1m', tensor_type, train_ratio=0.8, debug=True, sec_order=True)
-    data = dataset.data
-    pdb.set_trace()
->>>>>>> parent of a65f9212... add docs
