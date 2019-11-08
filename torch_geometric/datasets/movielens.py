@@ -1,15 +1,15 @@
 import torch
-from os.path import join
-import numpy as np
-import random as rd
-import tqdm
-import pickle
-
 
 from torch_geometric.data import InMemoryDataset, download_url
 from torch_geometric.io import read_ml
 from torch_geometric.data import Data, extract_zip
 from torch_geometric.utils import get_sec_order_edge
+
+from os.path import join
+import numpy as np
+import random as rd
+import tqdm
+import pickle
 
 
 def reindex_df(users, items, interactions):
@@ -53,11 +53,9 @@ def convert_2_data(
         emb_dim, repr_dim,
         train_ratio, sec_order):
     """
-    Convert pandas.DataFrame to torch-geometirc graph dataset
+    Entitiy node include (gender, occupation, genres)
 
-    Node include user nodes, item nodes and entity nodes (gender, occupation, genres)
-    Number and the order of nodes see below:
-        n_nodes = n_users + n_items + n_genders + n_occupation + n_genres
+    n_nodes = n_users + n_items + n_genders + n_occupation + n_genres
 
     """
     n_users = users.shape[0]
@@ -83,6 +81,7 @@ def convert_2_data(
     occupation_node_id_map = {occupation: n_users + n_items + n_genders + i for i, occupation in enumerate(occupations)}
     genres_node_id_map = {genre: n_users + n_items + n_genders + n_occupations + i for i, genre in enumerate(genres)}
 
+<<<<<<< HEAD
     # Node embedding
     x = torch.nn.Embedding(n_nodes, emb_dim, max_norm=1, norm_type=2.0).weight
 
@@ -92,6 +91,12 @@ def convert_2_data(
     r_proj = torch.nn.Embedding(
         n_relations // 2, emb_dim * repr_dim, max_norm=1, norm_type=2.0
     ).weight
+=======
+    x = torch.nn.Embedding(n_nodes, emb_dim, max_norm=1, norm_type=2.0).type(float_tensor).weight
+
+    r_emb = torch.nn.Embedding(n_relations, repr_dim, max_norm=1, norm_type=2.0).type(float_tensor).weight
+    r_proj = torch.nn.Embedding(n_relations // 2, emb_dim * repr_dim, max_norm=1, norm_type=2.0).type(float_tensor).weight
+>>>>>>> parent of a65f9212... add docs
     r_proj = torch.cat((r_proj, -r_proj), dim=0)
 
     # Start creating edges
@@ -139,8 +144,12 @@ def convert_2_data(
         col_idx.append(i_nid)
         edge_attrs.append([relations.index('interact'), row['rating']])
 
+<<<<<<< HEAD
     # Create masks
     rating_mask = torch.ones(ratings.shape[0], dtype=torch.bool)
+=======
+    rating_mask = torch.ones(ratings.shape[0])
+>>>>>>> parent of a65f9212... add docs
     rating_edge_mask = torch.cat(
         (
             torch.zeros(rating_begin, dtype=torch.bool),
@@ -361,7 +370,36 @@ if __name__ == '__main__':
     repr_dim = 64
     batch_size = 128
 
+<<<<<<< HEAD
     root = osp.join('.', 'tmp', 'ml')
     dataset = MovieLens(root, '1m', debug=0.1, train_ratio=0.8)
     data = dataset.data
     pdb.set_trace()
+=======
+if __name__ == '__main__':
+    import torch
+    from torch_geometric.datasets import MovieLens
+    import os.path as osp
+    import pdb
+
+    torch.random.manual_seed(2019)
+
+    if torch.cuda.is_available():
+        float_tensor = torch.cuda.FloatTensor
+        long_tensor = torch.cuda.LongTensor
+        bool_tensor = torch.cuda.BoolTensor
+    else:
+        float_tensor = torch.FloatTensor
+        long_tensor = torch.LongTensor
+        bool_tensor = torch.BoolTensor
+    tensor_type = (float_tensor, bool_tensor, long_tensor)
+
+    emb_dim = 300
+    repr_dim = 64
+    batch_size = 128
+
+    root = osp.join('.', 'tmp', 'ml')
+    dataset = MovieLens(root, '1m', tensor_type, train_ratio=0.8, debug=True, sec_order=True)
+    data = dataset.data
+    pdb.set_trace()
+>>>>>>> parent of a65f9212... add docs

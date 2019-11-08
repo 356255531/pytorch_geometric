@@ -51,7 +51,7 @@ __all__ = [
     'normalized_cut',
     'grid',
     'geodesic_distance',
-    'get_sec_order_edge',
+    'get_sec_edge_index',
     'to_scipy_sparse_matrix',
     'from_scipy_sparse_matrix',
     'to_networkx',

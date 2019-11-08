@@ -1,9 +1,9 @@
 import re
 import pandas as pd
 from os.path import join
-import numpy as np
 
 
+<<<<<<< HEAD
 def read_ml(raw_dir, debug=None):
     """
     Read the movielens dataset from .dat file
@@ -11,6 +11,10 @@ def read_ml(raw_dir, debug=None):
     :param debug: the portion of ratings userd, float
     :return: users, movies, ratings, pandas.DataFrame
     """
+=======
+def read_ml(raw_dir, debug=False):
+
+>>>>>>> parent of a65f9212... add docs
     users = []
     with open(join(raw_dir, 'users.dat')) as f:
         for l in f:
@@ -58,7 +62,11 @@ def read_ml(raw_dir, debug=None):
     ratings = pd.DataFrame(ratings)
 
     if debug:
+<<<<<<< HEAD
         df_idx = np.random.choice(np.arange(ratings.shape[0]), int(ratings.shape[0] * debug))
         ratings = ratings.iloc[df_idx]
+=======
+        ratings = ratings[:10000]
+>>>>>>> parent of a65f9212... add docs
 
     return users, movies, ratings
