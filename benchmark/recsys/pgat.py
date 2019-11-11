@@ -19,9 +19,9 @@ parser.add_argument("--hidden_size", type=int, default=128, help="")
 parser.add_argument("--heads", type=int, default=4, help="")
 
 parser.add_argument("--train_ratio", type=float, default=0.8, help="")
-parser.add_argument("--debug", default=0.1, help="")
+parser.add_argument("--debug", default=False, help="")
 parser.add_argument("--epochs", type=int, default=40, help="")
-parser.add_argument("--lr", type=float, default=1e-3, help="")
+parser.add_argument("--lr", type=float, default=1e-4, help="")
 parser.add_argument("--batch_size", type=int, default=256, help="")
 parser.add_argument("--weight_decay", type=float, default=0, help="")
 
@@ -38,7 +38,10 @@ dataset_args = {
     'train_ratio': args.train_ratio, 'debug': args.debug
 }
 task_args = {'emb_dim': args.emb_dim, 'repr_dim': args.repr_dim}
-train_args = {'lr': args.lr, 'epochs': args.epochs, 'batch_size': args.batch_size, 'weight_decay': args.weight_decay}
+train_args = {
+    'lr': args.lr, 'epochs': args.epochs, 'batch_size': args.batch_size,
+    'weight_decay': args.weight_decay
+}
 print('dataset params: {}'.format(dataset_args))
 print('task params: {}'.format(task_args))
 print('train params: {}'.format(train_args))

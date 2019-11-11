@@ -309,7 +309,7 @@ class MovieLens(InMemoryDataset):
 
         users, items, ratings = reindex_df(users, items, ratings)
 
-        data = convert_2_data(users, items, ratings,self.train_ratio, self.sec_order)
+        data = convert_2_data(users, items, ratings, self.train_ratio, self.sec_order)
 
         torch.save(self.collate([data]), self.processed_paths[0], pickle_protocol=4)
 

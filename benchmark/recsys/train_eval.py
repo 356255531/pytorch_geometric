@@ -267,6 +267,7 @@ def sec_order_single_run_with_kg(model, data, loss_func, train_args):
     for epoch in range(1, train_args['epochs'] + 1):
         kg_train_loss = train_kg_single_epoch(epoch, model, edge_iter, opt)
         kg_val_loss = val_kg_single_epoch(epoch, model, test_rating_edge_iter)
+
         cf_train_loss = train_sec_order_cf_single_epoch(
             epoch,
             model,
