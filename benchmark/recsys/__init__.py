@@ -1,6 +1,4 @@
-from .train_eval import single_run_with_kg
-from .parse_args import parse_args
+from benchmark.recsys.train_eval.train_eval_cf import single_run_with_kg
 __all__ = [
     'single_run_with_kg',
-    'parse_args'
 ]

@@ -1,8 +1,9 @@
-from .pgat import GATNet
+from .gat import GATNet
 from .gcn import GCNNet
-
+from .pgat import PGATNet
 
 __all__ = [
     'GATNet',
-    'GCNNet'
+    'GCNNet',
+    'PGATNet'
 ]

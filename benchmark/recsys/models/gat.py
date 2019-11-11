@@ -1,12 +1,12 @@
 import torch
 import torch.nn.functional as F
-from torch_geometric.nn import GCNConv
+from torch_geometric.nn import GATConv
 
 from .kg_net import KGNet
 
-class GCNNet(KGNet):
-    def __init__(self, hidden_size, emb_dim, repr_dim, num_nodes, num_relations):
-        super(GCNNet, self).__init__(emb_dim, repr_dim, num_nodes, num_relations)
+class GATNet(KGNet):
+    def __init__(self, hidden_size, heads, emb_dim, repr_dim, num_nodes, num_relations):
+        super(GATNet, self).__init__(emb_dim, repr_dim, num_nodes, num_relations)
         self.emb_dim = emb_dim
         self.repr_dim = repr_dim
 
@@ -18,15 +18,16 @@ class GCNNet(KGNet):
 
         self.kg_loss_func = torch.nn.MSELoss()
 
-        self.conv1 = GCNConv(emb_dim, hidden_size, cached=True)
-        self.conv2 = GCNConv(hidden_size, repr_dim, cached=True)
+        self.conv1 = GATConv(emb_dim, hidden_size // heads, heads=heads, dropout=0.6)
+        self.conv2 = GATConv(hidden_size, repr_dim, heads=1, concat=True, dropout=0.6)
 
     def reset_parameters(self):
         self.conv1.reset_parameters()
         self.conv2.reset_parameters()
 
     def forward(self, edge_index):
-        x = F.relu(self.conv1(self.node_emb.weight, edge_index))
-        x = F.dropout(x, training=self.training)
+        x = F.dropout(self.node_emb.weight, p=0.6, training=self.training)
+        x = F.elu(self.conv1(x, edge_index))
+        x = F.dropout(x, p=0.6, training=self.training)
         x = self.conv2(x, edge_index)
         return x
