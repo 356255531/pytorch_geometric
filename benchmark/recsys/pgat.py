@@ -34,13 +34,13 @@ data_path = osp.join(osp.dirname(osp.realpath(__file__)), '..', 'data', '1m')
 weights_path = osp.join(osp.dirname(osp.realpath(__file__)), '..', 'weights', '1m')
 
 dataset_args = {
-    'root': data_path, 'name': '1m', 'n_core': args.n_core, 'sec_order': True,
-    'train_ratio': args.train_ratio, 'debug': args.debug
+    'root': data_path, 'name': '1m', 'n_core': n_core, 'sec_order': True,
+    'train_ratio': train_ratio, 'debug': debug
 }
-task_args = {'emb_dim': args.emb_dim, 'repr_dim': args.repr_dim}
+task_args = {'emb_dim': emb_dim, 'repr_dim': repr_dim}
 train_args = {
-    'lr': args.lr, 'epochs': args.epochs, 'batch_size': args.batch_size,
-    'weight_decay': args.weight_decay
+    'lr': lr, 'epochs': epochs, 'batch_size': batch_size,
+    'weight_decay': weight_decay
 }
 print('dataset params: {}'.format(dataset_args))
 print('task params: {}'.format(task_args))
@@ -52,19 +52,19 @@ data = MovieLens(**dataset_args).data
 class PGAT(torch.nn.Module):
     def __init__(self, num_nodes, num_relations):
         super(PGAT, self).__init__()
-        self.node_emb = torch.nn.Embedding(num_nodes, args.emb_dim, max_norm=1, norm_type=2.0)
-        self.r_emb = torch.nn.Embedding(num_relations, args.repr_dim, max_norm=1, norm_type=2.0)
+        self.node_emb = torch.nn.Embedding(num_nodes, emb_dim, max_norm=1, norm_type=2.0)
+        self.r_emb = torch.nn.Embedding(num_relations, repr_dim, max_norm=1, norm_type=2.0)
         self.r_proj = torch.nn.Embedding(
-            num_relations, args.emb_dim * args.repr_dim, max_norm=1, norm_type=2.0
+            num_relations, emb_dim * repr_dim, max_norm=1, norm_type=2.0
         )
 
         self.kg_loss_func = torch.nn.MSELoss()
 
         self.conv1 = GATConv(
-            args.emb_dim, int(args.hidden_size // args.heads),
-            heads=args.heads, dropout=0.6)
+            emb_dim, int(hidden_size // heads),
+            heads=heads, dropout=0.6)
         self.conv2 = PAConv(
-            int(args.hidden_size // args.heads) * args.heads, args.repr_dim,
+            int(hidden_size // heads) * heads, repr_dim,
             heads=1, dropout=0.6)
         # self.conv1 = ChebConv(data.num_features, 16, K=2)
         # self.conv2 = ChebConv(16, data.num_features, K=2)
@@ -103,10 +103,10 @@ class PGAT(torch.nn.Module):
     def get_kg_loss(self, edge_index, edge_attr):
         r_idx = edge_attr[:, 0]
         r_emb = self.r_emb.weight[r_idx]
-        r_proj = self.r_proj.weight[r_idx].reshape(-1, args.emb_dim, args.repr_dim)
-        proj_head = torch.matmul(self.node_emb.weight[edge_index[:, :1]], r_proj).reshape(-1, args.repr_dim)
+        r_proj = self.r_proj.weight[r_idx].reshape(-1, emb_dim, repr_dim)
+        proj_head = torch.matmul(self.node_emb.weight[edge_index[:, :1]], r_proj).reshape(-1, repr_dim)
 
-        self.proj_tail = torch.matmul(self.node_emb.weight[edge_index[:, 1:2]], r_proj).reshape(-1, args.repr_dim)
+        self.proj_tail = torch.matmul(self.node_emb.weight[edge_index[:, 1:2]], r_proj).reshape(-1, repr_dim)
 
         est_tail = proj_head + r_emb
 

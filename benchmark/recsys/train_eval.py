@@ -1,17 +1,15 @@
 from __future__ import division
 
+import os
+
 import torch
 from torch import tensor
 from torch.utils.data import TensorDataset, DataLoader
 from torch_geometric.data.makedirs import makedirs
 
-import os
 import tqdm
 import numpy as np
 from torch.optim import Adam
-
-
-device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
 
 def get_iters(data, batch_size=128):
@@ -172,12 +170,12 @@ def val_sec_order_cf_single_epoch(
     pbar = tqdm.tqdm(test_rating_edge_iter, total=len(test_rating_edge_iter))
     for batch in pbar:
         edge_index, edge_attr = batch
-        batch_train_sec_order_edge_index = \
-            train_sec_order_edge_index[:, np.random.choice(n_train_sec_order_edge_index, train_args['batch_size'])]
+        sec_order_edge_index_idx = np.isin[n_train_sec_order_edge_index[:, 0], edge_index.cpu().numpy()[:, 0]]
+        batch_train_sec_order_edge_index = train_sec_order_edge_index[sec_order_edge_index_idx]
         est_rating = model.predict_(
             model(
                 data.edge_index[:, data.train_edge_mask],
-                torch.from_numpy(batch_train_sec_order_edge_index).to(device)),
+                batch_train_sec_order_edge_index.to(device)),
             edge_index
         )
         rating = edge_attr[:, 1:2].float().detach() / 5
@@ -190,8 +188,8 @@ def val_sec_order_cf_single_epoch(
 
 
 def single_run_with_kg(model, data, loss_func, train_args):
-    data.to(device)
-    model.to(device).reset_parameters()
+    data.to(train_args['device'])
+    model.to(train_args['device']).reset_parameters()
 
     edge_iter, train_rating_edge_iter, test_rating_edge_iter = \
         get_iters(data, batch_size=train_args['batch_size'])
@@ -237,7 +235,11 @@ def single_run_with_kg(model, data, loss_func, train_args):
 
     weights_path = os.path.expanduser(os.path.normpath(train_args['weights_path']))
     makedirs(weights_path)
-    weights_path = os.path.join(weights_path, 'model_weights.pth')
+    file_name = 'hs{}_epoch{}_lr{}_{}.pt'.format(
+        train_args['hidden_size'], epoch, train_args['lr'],
+        'debug{}'.format(train_args['debug'] if train_args['debug'] else '')
+    )
+    weights_path = os.path.join(weights_path, file_name)
     torch.save(model.state_dict(), weights_path)
 
     if torch.cuda.is_available():
@@ -245,8 +247,8 @@ def single_run_with_kg(model, data, loss_func, train_args):
 
 
 def sec_order_single_run_with_kg(model, data, loss_func, train_args):
-    data.to(device)
-    model.to(device).reset_parameters()
+    data.to(train_args['device'])
+    model.to(train_args['device']).reset_parameters()
 
     edge_iter, train_rating_edge_iter, test_rating_edge_iter = \
         get_iters(data, batch_size=train_args['batch_size'])

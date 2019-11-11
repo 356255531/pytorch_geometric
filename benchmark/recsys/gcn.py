@@ -1,45 +1,56 @@
-import os.path as osp
+__model__ = 'GCN'
 
-import torch
-import torch.nn.functional as F
 import argparse
+import os.path as osp
+import torch
 
 from torch_geometric.datasets import MovieLens
-from torch_geometric.nn import GCNConv
 
 from train_eval import single_run_with_kg
+from models import GCNNet
 
-
-torch.random.manual_seed(2019)
-
+# Parse arguments
 parser = argparse.ArgumentParser()
 parser.add_argument("--n_core", type=int, default=20, help="")
 
 parser.add_argument("--hidden_size", type=int, default=128, help="")
 
+parser.add_argument("--device", type=str, default='cuda', help="")
+parser.add_argument("--gpu_idx", type=str, default='7', help="")
 parser.add_argument("--train_ratio", type=float, default=0.8, help="")
-parser.add_argument("--debug", default=False, help="")
-parser.add_argument("--epochs", type=int, default=40, help="")
+parser.add_argument("--debug", default=0.1, help="")
+parser.add_argument("--epochs", type=int, default=1, help="")
 parser.add_argument("--batch_size", type=int, default=1024, help="")
 parser.add_argument("--lr", type=float, default=1e-3, help="")
 parser.add_argument("--weight_decay", type=float, default=0, help="")
+parser.add_argument("--early_stopping", type=int, default=40, help="")
+
 
 parser.add_argument("--emb_dim", type=int, default=300, help="")
-parser.add_argument("--repr_dim", type=int, default=64, help="")
+parser.add_argument("--repr_dim", type=int, default=32, help="")
 
 args = parser.parse_args()
 
-data_path = osp.join(osp.dirname(osp.realpath(__file__)), '..', 'data', '1m')
-weights_path = osp.join(osp.dirname(osp.realpath(__file__)), '..', 'weights', '1m')
 
+# Setup data and weights file path
+data_path = osp.join(osp.dirname(osp.realpath(__file__)), '..', 'data', '1m')
+weights_path = osp.join(osp.dirname(osp.realpath(__file__)), '..', 'weights', __model__,'1m')
+
+# Setup the torch device
+device = torch.device(args.device if args.device == 'cpu' else args.device + ':{}'.format(args.gpu_idx))
+torch.random.manual_seed(2019)
+
+# Display the arguments used in the experiments
 dataset_args = {
     'root': data_path, 'name': '1m', 'n_core': args.n_core, 'sec_order': False,
     'train_ratio': args.train_ratio, 'debug': args.debug
 }
 task_args = {'emb_dim': args.emb_dim, 'repr_dim': args.repr_dim}
 train_args = {
+    'debug': args.debug,
     'epochs': args.epochs, 'batch_size': args.batch_size, 'weight_decay': args.weight_decay,
-    'lr': args.lr, 'weights_path': weights_path}
+    'lr': args.lr, 'device': device,
+    'weights_path': weights_path, 'hidden_size': args.hidden_size}
 print('dataset params: {}'.format(dataset_args))
 print('task params: {}'.format(task_args))
 print('train params: {}'.format(train_args))
@@ -47,47 +58,8 @@ print('train params: {}'.format(train_args))
 data = MovieLens(**dataset_args).data
 
 
-class GCNNet(torch.nn.Module):
-    def __init__(self, num_nodes, num_relations):
-        super(GCNNet, self).__init__()
-        self.node_emb = torch.nn.Embedding(num_nodes, args.emb_dim, max_norm=1, norm_type=2.0)
-        self.r_emb = torch.nn.Embedding(num_relations, args.repr_dim, max_norm=1, norm_type=2.0)
-        self.r_proj = torch.nn.Embedding(
-            num_relations, args.emb_dim * args.repr_dim, max_norm=1, norm_type=2.0
-        )
-
-        self.kg_loss_func = torch.nn.MSELoss()
-
-        self.conv1 = GCNConv(args.emb_dim, args.hidden_size, cached=True)
-        self.conv2 = GCNConv(args.hidden_size, args.repr_dim, cached=True)
-
-    def reset_parameters(self):
-        self.conv1.reset_parameters()
-        self.conv2.reset_parameters()
-
-    def forward(self, edge_index):
-        x = F.relu(self.conv1(self.node_emb.weight, edge_index))
-        x = F.dropout(x, training=self.training)
-        x = self.conv2(x, edge_index)
-        return x
-
-    def get_kg_loss(self, edge_index, edge_attr):
-        r_idx = edge_attr[:, 0]
-        r_emb = self.r_emb.weight[r_idx]
-        r_proj = self.r_proj.weight[r_idx].reshape(-1, args.emb_dim, args.repr_dim)
-        proj_head = torch.matmul(self.node_emb.weight[edge_index[:, :1]], r_proj).reshape(-1, args.repr_dim)
-
-        self.proj_tail = torch.matmul(self.node_emb.weight[edge_index[:, 1:2]], r_proj).reshape(-1, args.repr_dim)
-
-        est_tail = proj_head + r_emb
-
-        loss_t = self.kg_loss_func(est_tail, self.proj_tail)
-
-        return loss_t
-
-
 def main():
-    model = GCNNet(data.num_nodes[0], data.num_relations[0])
+    model = GCNNet(args.hidden_size, args.emb_dim, args.repr_dim, data.num_nodes[0], data.num_relations[0])
     cf_loss_func = torch.nn.MSELoss()
     single_run_with_kg(model, data, cf_loss_func, train_args)
 
