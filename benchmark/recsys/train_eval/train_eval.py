@@ -31,9 +31,9 @@ def single_run_with_kg(run, model_class, model_args, dataset_args, train_args):
     trs_edge_iter, trs_train_rating_edge_iter, trs_test_rating_edge_iter = \
         get_iters(data, batch_size=train_args['batch_size'])
 
-    filename = 'run{}_seed{}_hs{}_lr{}_core{}'.format(
+    filename = 'run{}_seed{}_hs{}_lr{}_core{}_reprdim{}'.format(
         run, seed, model_args['hidden_size'],
-    train_args['lr'], dataset_args['num_core'])
+    train_args['lr'], dataset_args['num_core'], model_args['repr_dim'])
     debug = '' if not train_args['debug'] else '_debug{}'.format(train_args['debug'])
     logger_path = osp.join(train_args['logger_folder'], filename + debug)
     cleardir(logger_path)
