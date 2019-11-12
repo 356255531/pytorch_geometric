@@ -27,7 +27,7 @@ def single_run_with_kg(run, model_class, model_args, dataset_args, train_args):
         model_args['hidden_size'],
         model_args['emb_dim'], model_args['repr_dim'],
         data.num_nodes[0], data.num_relations[0]
-    )
+    ).to(train_args['device'])
     trs_edge_iter, trs_train_rating_edge_iter, trs_test_rating_edge_iter = \
         get_iters(data, batch_size=train_args['batch_size'])
 
