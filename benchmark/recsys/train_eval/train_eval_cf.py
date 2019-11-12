@@ -5,30 +5,26 @@ import torch
 import tqdm
 import numpy as np
 
+from .utils import get_loss_func, get_opt
 
-def train_cf_single_epoch(
-        epoch, model,
-        train_rating_edge_iter, data,
-        loss_func, opt_cf):
+
+def train_cf_single_epoch(epoch, model, train_rating_edge_iter, train_edge_index, train_args):
+    loss_func = get_loss_func(train_args['cf_loss'])
+    cf_opt = get_opt(train_args['cf_opt'], model, train_args['lr'], train_args['weight_decay'])
+
     model.training = True
     loss = float('inf')
     losses = []
     pbar = tqdm.tqdm(train_rating_edge_iter, total=len(train_rating_edge_iter))
     for batch in pbar:
-        edge_index, edge_attr = batch
-        x = model(
-            data.edge_index[:, data.train_edge_mask],
-        )
-        head = x[edge_index[:, 0]]
-        tail = x[edge_index[:, 1]]
-
-        est_rating = torch.sum(head * tail, dim=1).reshape(-1, 1)
-        rating = edge_attr[:, 1:2].float().detach() / 5
+        batch_trans_edge_index, batch_edge_attr = batch
+        est_rating = model.predict(train_edge_index, batch_trans_edge_index)
+        rating = batch_edge_attr[:, 1:2].float().detach() / 5
         loss_t = loss_func(est_rating, rating)
 
-        opt_cf.zero_grad()
+        cf_opt.zero_grad()
         loss_t.backward()
-        opt_cf.step()
+        cf_opt.step()
 
         losses.append(np.sqrt(float(loss_t.detach()) * 25))
         loss = np.mean(losses)
@@ -36,20 +32,17 @@ def train_cf_single_epoch(
     return loss
 
 
-def val_cf_single_epoch(epoch, model, test_rating_edge_iter, data, loss_func):
+def val_cf_single_epoch(epoch, model, test_rating_edge_iter, train_edge_index, train_args):
+    loss_func = get_loss_func(train_args['cf_loss'])
+
     model.training = False
     loss = float('inf')
     losses = []
     pbar = tqdm.tqdm(test_rating_edge_iter, total=len(test_rating_edge_iter))
     for batch in pbar:
-        edge_index, edge_attr = batch
-        x = model(
-            data.edge_index[:, data.train_edge_mask],
-        )
-        head = x[edge_index[:, 0]]
-        tail = x[edge_index[:, 1]]
-        est_rating = torch.sum(head * tail, dim=1).reshape(-1, 1)
-        rating = edge_attr[:, 1:2].float().detach() / 5
+        batch_trans_edge_index, batch_edge_attr = batch
+        est_rating = model.predict(train_edge_index, batch_trans_edge_index)
+        rating = batch_edge_attr[:, 1:2].float().detach() / 5
         loss_t = loss_func(est_rating, rating)
 
         losses.append(np.sqrt(float(loss_t.detach()) * 25))

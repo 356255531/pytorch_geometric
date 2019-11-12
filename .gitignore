@@ -12,6 +12,7 @@ venv/
 *tmp/
 .idea/
 .DStore/
+checkpoint/
 
 !torch_geometric/data/
 !test/data/

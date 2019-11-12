@@ -4,7 +4,6 @@ import argparse
 import torch
 
 from utils import get_folder_path
-from dataset import get_dataset
 from train_eval import run_with_kg
 from models import GCNNet
 
@@ -17,7 +16,7 @@ parser.add_argument("--dataset_name", type=str, default='1m', help="")
 parser.add_argument("--num_core", type=int, default=10, help="")
 parser.add_argument("--sec_order", type=bool, default=False, help="")
 parser.add_argument("--train_ratio", type=float, default=0.8, help="")
-parser.add_argument("--debug", default=0.1, help="")
+parser.add_argument("--debug", default=0.01, help="")
 
 
 # Model params
@@ -50,7 +49,7 @@ else:
 
 ########################################### Display all arguments ###########################################
 dataset_args = {
-    'data_folder': data_folder, 'dataset': args.dataset, 'name': args.dataset_name,
+    'root': data_folder, 'dataset': args.dataset, 'name': args.dataset_name,
     'num_core': args.num_core, 'sec_order': args.sec_order, 'train_ratio': args.train_ratio,
     'debug': args.debug
 }
@@ -60,6 +59,7 @@ model_args = {
 }
 train_args = {
     'debug': args.debug, 'runs': args.runs,
+    'kg_opt': 'adam', 'kg_loss': 'mse', 'cf_loss': 'mse', 'cf_opt': 'adam',
     'epochs': args.epochs, 'batch_size': args.batch_size, 'weight_decay': args.weight_decay,
     'lr': args.lr, 'device': device,
     'weights_folder': weights_folder, 'logger_folder': logger_folder}
@@ -69,7 +69,7 @@ print('train params: {}'.format(train_args))
 
 
 def main():
-    run_with_kg(GCNNet, dataset_args, model_args, train_args)
+    run_with_kg(GCNNet, model_args, dataset_args, train_args)
 
 
 if __name__ == '__main__':

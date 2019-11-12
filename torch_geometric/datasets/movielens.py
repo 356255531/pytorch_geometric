@@ -256,10 +256,11 @@ class MovieLens(InMemoryDataset):
         self.name = name.lower()
         assert self.name in ['1m']
         self.n_core = n_core
+        self.sec_order = sec_order
 
         self.train_ratio = kwargs.get('train_ratio', None)
         self.debug = kwargs.get('debug', False)
-        self.sec_order = sec_order
+        self.seed = kwargs.get('seed', None)
         self.suffix = self.build_suffix()
         super(MovieLens, self).__init__(root, transform, pre_transform, pre_filter)
 
@@ -324,6 +325,8 @@ class MovieLens(InMemoryDataset):
             suffixes.append('debug_{}'.format(self.debug))
         if self.sec_order:
             suffixes.append('sec_order')
+        if self.seed is not None:
+            suffixes.append('seed_{}'.format(self.seed))
         if not suffixes:
             suffix = ''
         else:

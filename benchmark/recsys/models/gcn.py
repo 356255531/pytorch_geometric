@@ -4,6 +4,7 @@ from torch_geometric.nn import GCNConv
 
 from .kg_net import KGNet
 
+
 class GCNNet(KGNet):
     def __init__(self, hidden_size, emb_dim, repr_dim, num_nodes, num_relations):
         super(GCNNet, self).__init__(emb_dim, repr_dim, num_nodes, num_relations)

@@ -3,8 +3,12 @@ from __future__ import division
 import tqdm
 import numpy as np
 
+from .utils import get_opt
 
-def train_kg_single_epoch(epoch, model, edge_iter, opt_kg):
+
+def train_kg_single_epoch(epoch, model, edge_iter, train_args):
+    kg_opt = get_opt(train_args['kg_opt'], model, lr=train_args['lr'], weight_decay=train_args['weight_decay'])
+
     loss = float('inf')
     losses = []
     pbar = tqdm.tqdm(edge_iter, total=len(edge_iter))
@@ -12,9 +16,9 @@ def train_kg_single_epoch(epoch, model, edge_iter, opt_kg):
         edge_index, edge_attr = batch
         loss_t = model.get_kg_loss(edge_index, edge_attr)
 
-        opt_kg.zero_grad()
+        kg_opt.zero_grad()
         loss_t.backward()
-        opt_kg.step()
+        kg_opt.step()
 
         losses.append(float(loss_t.detach()))
         loss = np.mean(losses)
