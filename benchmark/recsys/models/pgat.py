@@ -47,7 +47,7 @@ class PGATNet(KGNet):
         x = self.conv2(x, sec_order_edge_index)
         return x
 
-    def predict_(self, x, edge_index):
+    def predict_rating_(self, x, edge_index):
         heads = edge_index[:, 0]
         tails = edge_index[:, 1]
         est_rating = torch.sum(
@@ -56,5 +56,5 @@ class PGATNet(KGNet):
         ).reshape(-1, 1)
         return est_rating
 
-    def predict(self, edge_index):
-        return self.predict_(self.node_emb.weight, edge_index)
+    def predict_rating(self, edge_index):
+        return self.predict_rating_(self.node_emb.weight, edge_index)

@@ -73,7 +73,7 @@ def train_sec_order_cf_single_epoch(
         edge_index, edge_attr = batch
         batch_train_sec_order_edge_index = \
             train_sec_order_edge_index[:, np.random.choice(n_train_sec_order_edge_index, train_args['batch_size'])]
-        est_rating = model.predict_(
+        est_rating = model.predict_rating_(
             model(
                 data.edge_index[:, data.train_edge_mask],
                 torch.from_numpy(batch_train_sec_order_edge_index).to(train_args['device'])),
@@ -107,7 +107,7 @@ def val_sec_order_cf_single_epoch(
         edge_index, edge_attr = batch
         sec_order_edge_index_idx = np.isin[n_train_sec_order_edge_index[:, 0], edge_index.cpu().numpy()[:, 0]]
         batch_train_sec_order_edge_index = train_sec_order_edge_index[sec_order_edge_index_idx]
-        est_rating = model.predict_(
+        est_rating = model.predict_rating_(
             model(
                 data.edge_index[:, data.train_edge_mask],
                 batch_train_sec_order_edge_index.to(train_args['device'])),
