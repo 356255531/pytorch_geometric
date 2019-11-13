@@ -8,14 +8,14 @@ from .train_eval import single_run_with_kg, sec_order_single_run_with_kg
 
 def run_with_kg(model_class, model_args, dataset_args, train_args):
     # Create new checkpoin folders and clear it
-    filename = 'hs{}_lr{}_core{}_reprdim{}'.format(
+    params = 'hs{}_lr{}_core{}_reprdim{}'.format(
         model_args['hidden_size'],
         train_args['lr'], dataset_args['num_core'], model_args['repr_dim'])
     if train_args['model'] == 'GAT' or train_args['model'] == 'PGAT':
-        filename = 'heads{}_'.format(model_args['heads']) + filename
+        params = 'heads{}_'.format(model_args['heads']) + params
     debug = '' if not train_args['debug'] else '_debug{}'.format(train_args['debug'])
-    logger_path = osp.join(train_args['logger_folder'], filename + debug)
-    weights_path = osp.join(train_args['weights_folder'], filename + debug)
+    logger_path = osp.join(train_args['logger_folder'], params + debug)
+    weights_path = osp.join(train_args['weights_folder'], params + debug)
     train_args['logger_path'] = logger_path
     train_args['weights_path'] = weights_path
     cleardir(train_args['logger_path'])
@@ -41,15 +41,10 @@ def run_with_kg(model_class, model_args, dataset_args, train_args):
     mean_val_kg_loss, best_val_kg_loss = np.mean(kg_val_losses), np.min(kg_val_losses)
     mean_val_cf_loss, best_val_cf_loss = np.mean(cf_val_losses), np.min(cf_val_losses)
 
-    res_dict = {}
-    res_dict['mean_train_kg_loss'] = mean_train_kg_loss
-    res_dict['best_train_kg_loss'] = best_train_kg_loss
-    res_dict['mean_train_cf_loss'] = mean_train_cf_loss
-    res_dict['best_train_cf_loss'] = best_train_cf_loss
-    res_dict['mean_val_kg_loss'] = mean_val_kg_loss
-    res_dict['best_val_kg_loss'] = best_val_kg_loss
-    res_dict['mean_val_cf_loss'] = mean_val_cf_loss
-    res_dict['best_val_cf_loss'] = best_val_cf_loss
+    res_dict = {'mean_train_kg_loss': mean_train_kg_loss, 'best_train_kg_loss': best_train_kg_loss,
+                'mean_train_cf_loss': mean_train_cf_loss, 'best_train_cf_loss': best_train_cf_loss,
+                'mean_val_kg_loss': mean_val_kg_loss, 'best_val_kg_loss': best_val_kg_loss,
+                'mean_val_cf_loss': mean_val_cf_loss, 'best_val_cf_loss': best_val_cf_loss}
     with open(osp.join(train_args['logger_path'], 'res.pkl'), 'wb') as f:
         pickle.dump(res_dict, f)
 
