@@ -1,30 +1,16 @@
-import os
-import shutil
 from torch.utils.data import TensorDataset, DataLoader
 
 import torch
 from torch import optim
 
 
-def cleardir(path):
-    if os.path.isdir(path):
-        for file in os.listdir(path):
-            file_path = os.path.join(path, file)
-            try:
-                if os.path.isfile(file_path):
-                    os.unlink(file_path)
-                elif os.path.isdir(file_path): shutil.rmtree(file_path)
-            except Exception as e:
-                print(e)
-
-
-def get_iters(data, batch_size=128):
+def get_iters(data, train_args):
     edge_iter = DataLoader(
         TensorDataset(
             data.edge_index.t()[data.train_edge_mask],
             data.edge_attr[data.train_edge_mask],
         ),
-        batch_size=batch_size,
+        batch_size=train_args['kg_batch_size'],
         shuffle=True
     )
 
@@ -33,7 +19,7 @@ def get_iters(data, batch_size=128):
             data.edge_index.t()[data.train_edge_mask * data.rating_edge_mask],
             data.edge_attr[data.train_edge_mask * data.rating_edge_mask],
         ),
-        batch_size=batch_size,
+        batch_size=train_args['cf_batch_size'],
         shuffle=True
     )
 
@@ -42,7 +28,7 @@ def get_iters(data, batch_size=128):
             data.edge_index.t()[data.test_edge_mask * data.rating_edge_mask],
             data.edge_attr[data.test_edge_mask * data.rating_edge_mask],
         ),
-        batch_size=batch_size,
+        batch_size=train_args['cf_batch_size'],
         shuffle=True
     )
 

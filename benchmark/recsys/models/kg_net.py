@@ -15,8 +15,8 @@ class KGNet(torch.nn.Module):
 
         self.kg_loss_func = torch.nn.MSELoss()
 
-    def predict(self, edge_index, train_trans_edge_index, **kwargs):
-        x = self(edge_index, **kwargs)
+    def predict(self, edge_index, train_trans_edge_index, *args):
+        x = self(edge_index, *args)
         head = x[train_trans_edge_index[:, 0]]
         tail = x[train_trans_edge_index[:, 1]]
 

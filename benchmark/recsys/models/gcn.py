@@ -6,7 +6,7 @@ from .kg_net import KGNet
 
 
 class GCNNet(KGNet):
-    def __init__(self, hidden_size, emb_dim, repr_dim, num_nodes, num_relations):
+    def __init__(self, num_nodes, num_relations, hidden_size, emb_dim, repr_dim):
         super(GCNNet, self).__init__(emb_dim, repr_dim, num_nodes, num_relations)
         self.emb_dim = emb_dim
         self.repr_dim = repr_dim

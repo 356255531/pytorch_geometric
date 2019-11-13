@@ -20,7 +20,7 @@ parser.add_argument("--debug", default=False, help="")
 
 
 # Model params
-parser.add_argument("--hidden_size", type=int, default=128, help="")
+parser.add_argument("--hidden_size", type=int, default=64, help="")
 parser.add_argument("--emb_dim", type=int, default=300, help="")
 parser.add_argument("--repr_dim", type=int, default=16, help="")
 
@@ -28,8 +28,13 @@ parser.add_argument("--repr_dim", type=int, default=16, help="")
 parser.add_argument("--device", type=str, default='cuda', help="")
 parser.add_argument("--gpu_idx", type=str, default='0', help="")
 parser.add_argument("--runs", type=int, default=10, help="")
-parser.add_argument("--epochs", type=int, default=100, help="")
-parser.add_argument("--batch_size", type=int, default=256, help="")
+parser.add_argument("--epochs", type=int, default=50, help="")
+parser.add_argument("--kg_opt", type=str, default='adam', help="")
+parser.add_argument("--cf_opt", type=str, default='adam', help="")
+parser.add_argument("--kg_loss", type=str, default='mse', help="")
+parser.add_argument("--cf_loss", type=str, default='mse', help="")
+parser.add_argument("--kg_batch_size", type=int, default=1028, help="")
+parser.add_argument("--cf_batch_size", type=int, default=1028, help="")
 parser.add_argument("--lr", type=float, default=1e-4, help="")
 parser.add_argument("--weight_decay", type=float, default=0, help="")
 parser.add_argument("--early_stopping", type=int, default=40, help="")
@@ -54,14 +59,15 @@ dataset_args = {
     'debug': args.debug
 }
 model_args = {
-    'model': __model__, 'hidden_size': args.hidden_size, 'emb_dim': args.emb_dim,
+    'hidden_size': args.hidden_size, 'emb_dim': args.emb_dim,
     'repr_dim': args.repr_dim
 }
 train_args = {
     'debug': args.debug, 'runs': args.runs,
-    'kg_opt': 'adam', 'kg_loss': 'mse', 'cf_loss': 'mse', 'cf_opt': 'adam',
-    'epochs': args.epochs, 'batch_size': args.batch_size, 'weight_decay': args.weight_decay,
-    'lr': args.lr, 'device': device,
+    'model': __model__,
+    'kg_opt': args.kg_opt, 'kg_loss': args.kg_loss, 'cf_loss': args.cf_loss, 'cf_opt': args.cf_opt,
+    'epochs': args.epochs, 'kg_batch_size': args.kg_batch_size, 'cf_batch_size': args.cf_batch_size,
+    'weight_decay': args.weight_decay, 'lr': args.lr, 'device': device,
     'weights_folder': weights_folder, 'logger_folder': logger_folder}
 print('dataset params: {}'.format(dataset_args))
 print('task params: {}'.format(model_args))

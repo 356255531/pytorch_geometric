@@ -4,8 +4,9 @@ from torch_geometric.nn import GATConv
 
 from .kg_net import KGNet
 
+
 class GATNet(KGNet):
-    def __init__(self, hidden_size, heads, emb_dim, repr_dim, num_nodes, num_relations):
+    def __init__(self, num_nodes, num_relations, hidden_size, heads, emb_dim, repr_dim):
         super(GATNet, self).__init__(emb_dim, repr_dim, num_nodes, num_relations)
         self.emb_dim = emb_dim
         self.repr_dim = repr_dim
