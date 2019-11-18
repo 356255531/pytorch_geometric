@@ -25,7 +25,8 @@ def single_run_with_kg(run, model_class, model_args, dataset_args, train_args):
     model = model_class(
         data.num_nodes[0],
         data.num_relations[0],
-        **model_args).reset_parameters().to(train_args['device'])
+        **model_args).to(train_args['device'])
+    model.reset_parameters()
     trs_edge_iter, trs_train_rating_edge_iter, trs_test_rating_edge_iter = \
         get_iters(data, train_args)
 

@@ -7,7 +7,7 @@ import pickle
 
 
 from torch_geometric.data import InMemoryDataset, download_url
-from torch_geometric.io import read_ml
+from torch_geometric.io import read_lastfm
 from torch_geometric.data import Data, extract_zip
 from torch_geometric.utils import get_sec_order_edge
 
@@ -244,28 +244,30 @@ def restore(path):
     return obj
 
 
-class MovieLens(InMemoryDataset):
-    url = 'http://files.grouplens.org/datasets/movielens/'
+class LastFM(InMemoryDataset):
+    url = 'http://files.grouplens.org/datasets/hetrec2011/'
 
     def __init__(self,
                  root,
                  name,
                  sec_order=False,
-                 n_core=10,
+                 num_cores=10,
+                 year=2015,
                  transform=None,
                  pre_transform=None,
                  pre_filter=None,
                  **kwargs):
         self.name = name.lower()
-        assert self.name in ['1m']
-        self.n_core = n_core
+        assert self.name in ['2k']
+        self.num_cores = num_cores
+        self.year = 2015
         self.sec_order = sec_order
 
         self.train_ratio = kwargs.get('train_ratio', None)
         self.debug = kwargs.get('debug', False)
         self.seed = kwargs.get('seed', None)
         self.suffix = self.build_suffix()
-        super(MovieLens, self).__init__(root, transform, pre_transform, pre_filter)
+        super(LastFM, self).__init__(root, transform, pre_transform, pre_filter)
 
         self.data, self.slices = torch.load(self.processed_paths[0])
         print('Graph params: {}'.format(self.data))
@@ -274,7 +276,7 @@ class MovieLens(InMemoryDataset):
 
     @property
     def raw_file_names(self):
-        return 'ml-{}.zip'.format(self.name.lower())
+        return 'hetrec2011-lastfm-{}.zip'.format(self.name.lower())
 
     @property
     def processed_file_names(self):
@@ -286,36 +288,36 @@ class MovieLens(InMemoryDataset):
         extract_zip(path, self.raw_dir)
 
     def process(self):
-        unzip_raw_dir = join(self.raw_dir, 'ml-{}'.format(self.name))
+        unzip_raw_dir = self.raw_dir
 
         # read files
-        users, items, ratings = read_ml(unzip_raw_dir, self.debug)
+        artists, tags, user_artists, user_taggedartists, user_friends = read_lastfm(unzip_raw_dir, self.debug)
+        read_dfs = [artists, tags, user_artists, user_taggedartists, user_friends]
 
         # remove duplications
-        users = users.drop_duplicates()
-        items = items.drop_duplicates()
-        ratings = ratings.drop_duplicates()
+        for df in read_dfs:
+            df.drop_duplicates()
 
-        item_count = ratings['iid'].value_counts()
-        user_count = ratings['uid'].value_counts()
-        item_count.name = 'movie_count'
-        user_count.name = 'user_count'
-        ratings = ratings.join(item_count, on='iid')
-        ratings = ratings.join(user_count, on='uid')
+        # Remove the interactions less than num_cores, and rebuild users and artists df
+        user_artists = user_artists[user_artists.listen_count > self.num_cores]
 
-        # delete ratings have movie and user count less than self.n_core
-        ratings = ratings[ratings.movie_count > self.n_core]
-        ratings = ratings[ratings.user_count > self.n_core]
+        # Remove the tags before 2015
+        user_taggedartists = user_taggedartists[user_taggedartists.yy > self.year]
 
-        # drop users and movies which do not exist in ratings
-        users = users[users.uid.isin(ratings['uid'])]
-        items = items[items.iid.isin(ratings['iid'])]
+        # Remove the sparse tags from tags and user_taggedartists dataframe
+        tag_count = user_taggedartists['tid'].value_counts()
+        tag_count.name = 'tag_count'
+        user_taggedartists = user_taggedartists.join(tag_count, on='tid')
+        user_taggedartists = user_taggedartists[user_taggedartists.tag_count > self.num_tag_core]
+        tags = tags[tags.tid.isin(user_taggedartists['tid'])]
 
-        users, items, ratings = reindex_df(users, items, ratings)
 
-        data = convert_2_data(users, items, ratings, self.train_ratio, self.sec_order)
 
-        torch.save(self.collate([data]), self.processed_paths[0], pickle_protocol=4)
+        # users, items, ratings = reindex_df(users, items, ratings)
+
+        # data = convert_2_data(users, items, ratings, self.train_ratio, self.sec_order)
+
+        torch.save(self.collate([1]), self.processed_paths[0], pickle_protocol=4)
 
     def __repr__(self):
         return '{}-{}'.format(self.__class__.__name__, self.name.capitalize())
@@ -336,3 +338,18 @@ class MovieLens(InMemoryDataset):
             suffix = '_'.join(suffixes)
         return '_' + suffix
 
+
+if __name__ == '__main__':
+    import torch
+    from torch_geometric.datasets import MovieLens
+    import os.path as osp
+
+    torch.random.manual_seed(2019)
+
+    emb_dim = 300
+    repr_dim = 64
+    batch_size = 128
+
+    root = osp.join('.', 'tmp', 'lastfm')
+    dataset = LastFM(root, '2k')
+    data = dataset.data
