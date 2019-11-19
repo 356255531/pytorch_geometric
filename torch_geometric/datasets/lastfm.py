@@ -13,38 +13,64 @@ from torch_geometric.data import Data, extract_zip
 from torch_geometric.utils import get_sec_order_edge
 
 
-def reindex_df(artists, tags, user_artists, user_taggedartists, bi_user_friends):
+def reindex_df(
+        raw_uids, raw_aids, raw_tids,
+        artists, tags, user_artists, bi_user_friends):
     """
-    reindex users, items, interactions in case there are some values missing in between
-    :param users: pd.DataFrame
-    :param items: pd.DataFrame
-    :param interactions: pd.DataFrame
-    :return: same
+
+    :param uids:
+    :param aids:
+    :param tids:
+    :param artists:
+    :param tags:
+    :param user_artists:
+    :param user_taggedartists:
+    :param bi_user_friends:
+    :return:
     """
-    n_users = users.shape[0]
-    n_movies = items.shape[0]
-
-    raw_uids = np.array(users.uid, dtype=np.int)
-    raw_iids = np.array(items.iid, dtype=np.int)
-    uids = np.arange(n_users)
-    iids = np.arange(n_movies)
-
-    users.loc[:, 'uid'] = uids
-    items.loc[:, 'iid'] = iids
+    uids = np.arange(raw_uids.shape[0])
+    aids = np.arange(raw_aids.shape[0])
+    tids = np.arange(raw_tids.shape[0])
 
     raw_uid2uid = {raw_uid: uid for raw_uid, uid in zip(raw_uids, uids)}
-    raw_iid2iid = {raw_iid: iid for raw_iid, iid in zip(raw_iids, iids)}
+    raw_aid2aid = {raw_aid: aid for raw_aid, aid in zip(raw_aids, aids)}
+    raw_tid2tid = {raw_tid: tid for raw_tid, tid in zip(raw_tids, tids)}
+    raw_tid2tid[np.nan] = np.nan
 
-    rating_uids = np.array(interactions.uid, dtype=np.int)
-    rating_iids = np.array(interactions.iid, dtype=np.int)
-    print('reindex user id of ratings...')
-    rating_uids = [raw_uid2uid[rating_uid] for rating_uid in rating_uids]
-    print('reindex item id of ratings...')
-    rating_iids = [raw_iid2iid[rating_iid] for rating_iid in rating_iids]
-    interactions.loc[:, 'uid'] = rating_uids
-    interactions.loc[:, 'iid'] = rating_iids
+    print('reindex artist index of artists...')
+    artists_aids = np.array(artists.aid, dtype=np.int)
+    artists_tids = np.array(artists.tid, dtype=np.float)
+    artists_aids = [raw_aid2aid[aid] for aid in artists_aids]
+    artists_tids = [raw_tid2tid[tid] for tid in artists_tids]
+    import pdb
+    pdb.set_trace()
+    artists.loc[:, 'aid'] = artists_aids
+    artists.loc[:, 'tid'] = artists_tids
 
-    return users, items, interactions
+    print('reindex tag index of tags...')
+    tags_tids = np.array(tags.tid.shape[0], dtype=np.int)
+    tags_tids = [raw_tid2tid[tid] for tid in tags_tids]
+    tags.loc[:, 'tid'] = tags_tids
+
+    print('reindex user and artist index of user_artists...')
+    user_artists_uids = np.array(user_artists.tid.shape[0], dtype=np.int)
+    user_artists_aids = np.array(user_artists.aid.shape[0], dtype=np.int)
+    user_artists_tids = np.array(user_artists.tid.shape[0], dtype=np.int)
+    user_artists_uids = [raw_uid2uid[uid] for uid in user_artists_uids]
+    user_artists_aids = [raw_aid2aid[aid] for aid in user_artists_aids]
+    user_artists_tids = [raw_tid2tid[tig] for tig in user_artists_tids]
+    user_artists.loc[:, 'uid'] = user_artists_uids
+    user_artists.loc[:, 'aid'] = user_artists_aids
+    user_artists.loc[:, 'tid'] = user_artists_tids
+
+    print('reindex user and friends index of bi_user_friends...')
+    bi_user_friends_uids = np.array(bi_user_friends.uid.shape[0], dtype=np.int)
+    bi_user_friends_fids = np.array(bi_user_friends.fid.shape[0], dtype=np.int)
+    bi_user_friends_uids = [raw_uid2uid[uid] for uid in bi_user_friends_uids]
+    bi_user_friends_fids = [raw_uid2uid[fid] for fid in bi_user_friends_fids]
+    bi_user_friends.loc[:, 'uid'] = bi_user_friends_uids
+    bi_user_friends.loc[:, 'fid'] = bi_user_friends_fids
+    return artists, tags, user_artists, bi_user_friends
 
 
 def convert_2_data(
@@ -296,14 +322,15 @@ class LastFM(InMemoryDataset):
 
         # remove duplications
         artists = artists.drop_duplicates()
+        tags = tags.drop_duplicates()
         user_artists = user_artists.drop_duplicates()
         user_taggedartists = user_taggedartists.drop_duplicates()
         bi_user_friends = bi_user_friends.drop_duplicates()
 
         # Remove the interactions less than num_cores, and rebuild users and artists df
         user_artists = user_artists[user_artists.listen_count > self.num_cores]
-        uids = user_artists.uid.drop_duplicates()
-        aids = user_artists.aid.drop_duplicates()
+        uids = user_artists.uid.drop_duplicates().sort_values()
+        aids = user_artists.aid.drop_duplicates().sort_values()
 
         # Remove the artists not in aids
         artists = artists[artists.aid.isin(aids)]
@@ -318,17 +345,19 @@ class LastFM(InMemoryDataset):
         user_taggedartists = user_taggedartists.join(tag_count, on='tid')
         user_taggedartists = user_taggedartists[user_taggedartists.tag_count > self.num_tag_cores]
         user_taggedartists = user_taggedartists[user_taggedartists.uid.isin(uids) & user_taggedartists.aid.isin(aids)]
-
-        # Remove tags not in user_taggedartists
-        tids = user_taggedartists.tid.drop_duplicates()
+        tids = user_taggedartists.tid.drop_duplicates().sort_values()
         tags = tags[tags.tid.isin(tids)]
 
-        artists, tags, user_artists, user_taggedartists, bi_user_friends = reindex_df(artists, tags, user_artists, user_taggedartists, bi_user_friends)
+        # Remove tags not in user_taggedartists
+        artists = pd.merge(artists, user_taggedartists[['aid', 'tid']], on='aid', how='outer')
 
-        data = convert_2_data(
-            artists, tags, user_artists, user_taggedartists, bi_user_friends,
-            self.train_ratio, self.sec_order
-        )
+        artists, tags, user_artists, bi_user_friends = \
+            reindex_df(uids, aids, tids, artists, tags, user_artists, bi_user_friends)
+
+        # data = convert_2_data(
+        #     artists, tags, user_artists, user_taggedartists, bi_user_friends,
+        #     self.train_ratio, self.sec_order
+        # )
 
         torch.save(self.collate([data]), self.processed_paths[0], pickle_protocol=4)
 
