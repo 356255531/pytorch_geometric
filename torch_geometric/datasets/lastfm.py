@@ -4,6 +4,7 @@ import numpy as np
 import random as rd
 import tqdm
 import pickle
+import pandas as pd
 
 
 from torch_geometric.data import InMemoryDataset, download_url
@@ -12,7 +13,7 @@ from torch_geometric.data import Data, extract_zip
 from torch_geometric.utils import get_sec_order_edge
 
 
-def reindex_df(users, items, interactions):
+def reindex_df(artists, tags, user_artists, user_taggedartists, bi_user_friends):
     """
     reindex users, items, interactions in case there are some values missing in between
     :param users: pd.DataFrame
@@ -47,7 +48,7 @@ def reindex_df(users, items, interactions):
 
 
 def convert_2_data(
-        users, items, ratings,
+        artists, tags, user_artists, user_taggedartists, bi_user_friends,
         train_ratio, sec_order):
     """
     Entitiy node include (gender, occupation, genres)
@@ -252,7 +253,7 @@ class LastFM(InMemoryDataset):
                  name,
                  sec_order=False,
                  num_cores=10,
-                 year=2015,
+                 num_tag_cores=10,
                  transform=None,
                  pre_transform=None,
                  pre_filter=None,
@@ -260,7 +261,7 @@ class LastFM(InMemoryDataset):
         self.name = name.lower()
         assert self.name in ['2k']
         self.num_cores = num_cores
-        self.year = 2015
+        self.num_tag_cores = num_tag_cores
         self.sec_order = sec_order
 
         self.train_ratio = kwargs.get('train_ratio', None)
@@ -291,33 +292,45 @@ class LastFM(InMemoryDataset):
         unzip_raw_dir = self.raw_dir
 
         # read files
-        artists, tags, user_artists, user_taggedartists, user_friends = read_lastfm(unzip_raw_dir, self.debug)
-        read_dfs = [artists, tags, user_artists, user_taggedartists, user_friends]
+        artists, tags, user_artists, user_taggedartists, bi_user_friends = read_lastfm(unzip_raw_dir, self.debug)
 
         # remove duplications
-        for df in read_dfs:
-            df.drop_duplicates()
+        artists = artists.drop_duplicates()
+        user_artists = user_artists.drop_duplicates()
+        user_taggedartists = user_taggedartists.drop_duplicates()
+        bi_user_friends = bi_user_friends.drop_duplicates()
 
         # Remove the interactions less than num_cores, and rebuild users and artists df
         user_artists = user_artists[user_artists.listen_count > self.num_cores]
+        uids = user_artists.uid.drop_duplicates()
+        aids = user_artists.aid.drop_duplicates()
 
-        # Remove the tags before 2015
-        user_taggedartists = user_taggedartists[user_taggedartists.yy > self.year]
+        # Remove the artists not in aids
+        artists = artists[artists.aid.isin(aids)]
+
+        # Remove the users not in uids
+        bi_user_friends = bi_user_friends[bi_user_friends.uid.isin(uids) & bi_user_friends.fid.isin(uids)]
+        bi_user_friends = bi_user_friends[bi_user_friends.uid != bi_user_friends.fid]
 
         # Remove the sparse tags from tags and user_taggedartists dataframe
-        tag_count = user_taggedartists['tid'].value_counts()
+        tag_count = user_taggedartists.tid.value_counts()
         tag_count.name = 'tag_count'
         user_taggedartists = user_taggedartists.join(tag_count, on='tid')
-        user_taggedartists = user_taggedartists[user_taggedartists.tag_count > self.num_tag_core]
-        tags = tags[tags.tid.isin(user_taggedartists['tid'])]
+        user_taggedartists = user_taggedartists[user_taggedartists.tag_count > self.num_tag_cores]
+        user_taggedartists = user_taggedartists[user_taggedartists.uid.isin(uids) & user_taggedartists.aid.isin(aids)]
 
+        # Remove tags not in user_taggedartists
+        tids = user_taggedartists.tid.drop_duplicates()
+        tags = tags[tags.tid.isin(tids)]
 
+        artists, tags, user_artists, user_taggedartists, bi_user_friends = reindex_df(artists, tags, user_artists, user_taggedartists, bi_user_friends)
 
-        # users, items, ratings = reindex_df(users, items, ratings)
+        data = convert_2_data(
+            artists, tags, user_artists, user_taggedartists, bi_user_friends,
+            self.train_ratio, self.sec_order
+        )
 
-        # data = convert_2_data(users, items, ratings, self.train_ratio, self.sec_order)
-
-        torch.save(self.collate([1]), self.processed_paths[0], pickle_protocol=4)
+        torch.save(self.collate([data]), self.processed_paths[0], pickle_protocol=4)
 
     def __repr__(self):
         return '{}-{}'.format(self.__class__.__name__, self.name.capitalize())
