@@ -1,13 +1,25 @@
-from torch.utils.data import TensorDataset, DataLoader
-
 import torch
 from torch import optim
+from torch.utils.data import TensorDataset, DataLoader
+
+from torch_geometric.datasets import MovieLens
+from torch_geometric.datasets import LastFM
+
+
+def get_dataset(dataset_args):
+    ds = dataset_args['dataset']
+    if ds == 'movielens':
+        return MovieLens(**dataset_args)
+    if ds == 'lastfm':
+        return LastFM(**dataset_args)
+    else:
+        raise NotImplemented('{} has not been implemented!'.format(dataset_args['dataset']))
 
 
 def get_iters(data, train_args):
     edge_iter = DataLoader(
         TensorDataset(
-            data.edge_index.t()[data.train_edge_mask],
+            data.edge_index[:, data.train_edge_mask].t(),
             data.edge_attr[data.train_edge_mask],
         ),
         batch_size=train_args['kg_batch_size'],
@@ -16,7 +28,7 @@ def get_iters(data, train_args):
 
     train_rating_edge_iter = DataLoader(
         TensorDataset(
-            data.edge_index.t()[data.train_edge_mask * data.rating_edge_mask],
+            data.edge_index[:, data.train_edge_mask * data.rating_edge_mask].t(),
             data.edge_attr[data.train_edge_mask * data.rating_edge_mask],
         ),
         batch_size=train_args['cf_batch_size'],
@@ -25,7 +37,7 @@ def get_iters(data, train_args):
 
     test_rating_edge_iter = DataLoader(
         TensorDataset(
-            data.edge_index.t()[data.test_edge_mask * data.rating_edge_mask],
+            data.edge_index[:, data.test_edge_mask * data.rating_edge_mask].t(),
             data.edge_attr[data.test_edge_mask * data.rating_edge_mask],
         ),
         batch_size=train_args['cf_batch_size'],

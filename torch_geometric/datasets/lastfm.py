@@ -1,8 +1,6 @@
 import torch
-from os.path import join
 import numpy as np
 import random as rd
-import tqdm
 import pickle
 import pandas as pd
 
@@ -15,17 +13,16 @@ from torch_geometric.utils import get_sec_order_edge
 
 def reindex_df(
         raw_uids, raw_aids, raw_tids,
-        artists, tags, user_artists, bi_user_friends):
+        artists, tags, user_artists, bi_user_friends, user_taggedartists):
     """
-
     :param uids:
     :param aids:
     :param tids:
-    :param artists:
+    :param tagged_artists:
     :param tags:
     :param user_artists:
-    :param user_taggedartists:
     :param bi_user_friends:
+    :param user_taggedartists:
     :return:
     """
     uids = np.arange(raw_uids.shape[0])
@@ -35,194 +32,150 @@ def reindex_df(
     raw_uid2uid = {raw_uid: uid for raw_uid, uid in zip(raw_uids, uids)}
     raw_aid2aid = {raw_aid: aid for raw_aid, aid in zip(raw_aids, aids)}
     raw_tid2tid = {raw_tid: tid for raw_tid, tid in zip(raw_tids, tids)}
-    raw_tid2tid[np.nan] = np.nan
 
     print('reindex artist index of artists...')
     artists_aids = np.array(artists.aid, dtype=np.int)
-    artists_tids = np.array(artists.tid, dtype=np.float)
     artists_aids = [raw_aid2aid[aid] for aid in artists_aids]
-    artists_tids = [raw_tid2tid[tid] for tid in artists_tids]
-    import pdb
-    pdb.set_trace()
     artists.loc[:, 'aid'] = artists_aids
-    artists.loc[:, 'tid'] = artists_tids
 
     print('reindex tag index of tags...')
-    tags_tids = np.array(tags.tid.shape[0], dtype=np.int)
+    tags_tids = np.array(tags.tid, dtype=np.int)
     tags_tids = [raw_tid2tid[tid] for tid in tags_tids]
     tags.loc[:, 'tid'] = tags_tids
 
     print('reindex user and artist index of user_artists...')
-    user_artists_uids = np.array(user_artists.tid.shape[0], dtype=np.int)
-    user_artists_aids = np.array(user_artists.aid.shape[0], dtype=np.int)
-    user_artists_tids = np.array(user_artists.tid.shape[0], dtype=np.int)
+    user_artists_uids = np.array(user_artists.uid, dtype=np.int)
+    user_artists_aids = np.array(user_artists.aid, dtype=np.int)
     user_artists_uids = [raw_uid2uid[uid] for uid in user_artists_uids]
     user_artists_aids = [raw_aid2aid[aid] for aid in user_artists_aids]
-    user_artists_tids = [raw_tid2tid[tig] for tig in user_artists_tids]
     user_artists.loc[:, 'uid'] = user_artists_uids
     user_artists.loc[:, 'aid'] = user_artists_aids
-    user_artists.loc[:, 'tid'] = user_artists_tids
 
     print('reindex user and friends index of bi_user_friends...')
-    bi_user_friends_uids = np.array(bi_user_friends.uid.shape[0], dtype=np.int)
-    bi_user_friends_fids = np.array(bi_user_friends.fid.shape[0], dtype=np.int)
+    bi_user_friends_uids = np.array(bi_user_friends.uid, dtype=np.int)
+    bi_user_friends_fids = np.array(bi_user_friends.fid, dtype=np.int)
     bi_user_friends_uids = [raw_uid2uid[uid] for uid in bi_user_friends_uids]
     bi_user_friends_fids = [raw_uid2uid[fid] for fid in bi_user_friends_fids]
     bi_user_friends.loc[:, 'uid'] = bi_user_friends_uids
     bi_user_friends.loc[:, 'fid'] = bi_user_friends_fids
-    return artists, tags, user_artists, bi_user_friends
+
+    print('reindex user, artist and tag index of bi_user_friends...')
+    user_taggedartists_uids = np.array(user_taggedartists.uid, dtype=np.int)
+    user_taggedartists_aids = np.array(user_taggedartists.aid, dtype=np.int)
+    user_taggedartists_tids = np.array(user_taggedartists.tid, dtype=np.int)
+    user_taggedartists_uids = [raw_uid2uid[uid] for uid in user_taggedartists_uids]
+    user_taggedartists_aids = [raw_aid2aid[aid] for aid in user_taggedartists_aids]
+    user_taggedartists_tids = [raw_tid2tid[tid] for tid in user_taggedartists_tids]
+    user_taggedartists.loc[:, 'uid'] = user_taggedartists_uids
+    user_taggedartists.loc[:, 'aid'] = user_taggedartists_aids
+    user_taggedartists.loc[:, 'tid'] = user_taggedartists_tids
+    return uids, aids, tids, artists, tags, user_artists, bi_user_friends, user_taggedartists
 
 
 def convert_2_data(
-        artists, tags, user_artists, user_taggedartists, bi_user_friends,
+        uids, aids, tids,
+        artists, tags, user_artists, bi_user_friends, user_taggedartists,
         train_ratio, sec_order):
     """
-    Entitiy node include (gender, occupation, genres)
-
-    n_nodes = n_users + n_items + n_genders + n_occupation + n_ages + n_genres
+    n_nodes = n_users + n_artists + n_tags
 
     """
-    n_users = users.shape[0]
-    n_items = items.shape[0]
+    n_users = uids.shape[0]
+    n_artists = aids.shape[0]
+    n_tags = tids.shape[0]
 
-    genders = ['M', 'F']
-    n_genders = len(genders)
-
-    occupations = list(users.occupation.unique())
-    n_occupations = len(occupations)
-
-    ages = ['1', '18', '25', '35', '45', '50', '56']
-    n_ages = len(ages)
-
-    genres = list(items.keys()[3:21])
-    n_genres = len(genres)
+    relations = ['friendship', 'tag', 'interaction', '-friendship', '-tag', '-interaction']
 
     # Bulid node id
-    num_nodes = n_users + n_items + n_genders + n_occupations + n_ages + n_genres
+    num_nodes = n_users + n_artists + n_tags
+    num_relations = len(relations)
 
     # Build property2id map
-    users['node_id'] = users['uid']
-    items['node_id'] = items['iid'] + n_users
-    user_node_id_map = {uid: i for i, uid in enumerate(users['uid'].values)}
-    item_node_id_map = {iid: n_users + i for i, iid in enumerate(items['iid'].values)}
-    gender_node_id_map = {gender: n_users + n_items + i for i, gender in enumerate(genders)}
-    occupation_node_id_map = {occupation: n_users + n_items + n_genders + i for i, occupation in enumerate(occupations)}
-    genre_node_id_map = {genre: n_users + n_items + n_genders + n_occupations + i for i, genre in enumerate(genres)}
-    age_node_id_map = {genre: n_users + n_items + n_genders + n_occupations + n_ages + i for i, genre in enumerate(ages)}
+    user_node_id_map = {i: i for i in uids}
+    artist_node_id_map = {i: n_users + i for i in aids}
+    tag_node_id_map = {i: n_users + n_artists + i for i in tids}
 
     # Start creating edges
     row_idx, col_idx = [], []
     edge_attrs = []
 
-    rating_begin = 0
+    print('Creating friendship edges...')
+    uids = list(bi_user_friends['uid'].values)
+    fids = list(bi_user_friends['fid'].values)
+    user_nids = [user_node_id_map[uid] for uid in uids]
+    friends_nids = [user_node_id_map[fid] for fid in fids]
+    row_idx += user_nids
+    col_idx += friends_nids
+    edge_attrs += [[-1, relations.index('friendship')] for i in range(bi_user_friends.shape[0])]
 
-    print('Creating user property edges...')
-    for _, row in tqdm.tqdm(users.iterrows(), total=users.shape[0]):
-        gender = row['gender']
-        occupation = row['occupation']
-        age = row['age']
+    print('Creating artist tags property edges...')
+    artists_tags = user_taggedartists[['aid', 'tid']].drop_duplicates()
+    aids = list(artists_tags['aid'].values)
+    tids = list(artists_tags['tid'].values)
+    artist_nids = [artist_node_id_map[aid] for aid in aids]
+    tag_nids = [tag_node_id_map[tid] for tid in tids]
+    row_idx += artist_nids
+    col_idx += tag_nids
+    edge_attrs += [[-1, relations.index('tag')] for i in range(artists_tags.shape[0])]
 
-        u_nid = row['uid']
-        gender_nid = gender_node_id_map[gender]
-        row_idx.append(u_nid)
-        col_idx.append(gender_nid)
-
-        occupation_nid = occupation_node_id_map[occupation]
-        row_idx.append(u_nid)
-        col_idx.append(occupation_nid)
-
-        age_nid = age_node_id_map[age]
-        row_idx.append(u_nid)
-        col_idx.append(age_nid)
-    edge_attrs += [-1 for i in range(3 * users.shape[0])]
-    rating_begin += 3 * users.shape[0]
-
-    print('Creating item property edges...')
-    for _, row in tqdm.tqdm(items.iterrows(), total=items.shape[0]):
-        i_nid = item_node_id_map[row['iid']]
-
-        for genre in genres:
-            if not row[genre]:
-                continue
-            g_nid = genre_node_id_map[genre]
-            row_idx.append(i_nid)
-            col_idx.append(g_nid)
-            edge_attrs.append(-1)
-            rating_begin += 1
-
-    print('Creating rating property edges...')
-    row_idx += list(users.iloc[ratings['uid']]['node_id'].values)
-    col_idx += list(items.iloc[ratings['iid']]['node_id'].values)
-    edge_attrs += list(ratings['rating'])
+    print('Creating listen property edges...')
+    uids = list(user_artists['uid'].values)
+    aids = list(user_artists['aid'].values)
+    user_nids = [user_node_id_map[uid] for uid in uids]
+    artist_nids = [artist_node_id_map[aid] for aid in aids]
+    row_idx += user_nids
+    col_idx += artist_nids
+    edge_attrs += [[1, relations.index('interaction')] for i in range(user_artists.shape[0])]
 
     print('Building masks...')
-    rating_mask = torch.ones(ratings.shape[0], dtype=torch.bool)
+    rating_mask = torch.ones(user_artists.shape[0], dtype=torch.bool)
     rating_edge_mask = torch.cat(
         (
-            torch.zeros(rating_begin, dtype=torch.bool),
+            torch.zeros(bi_user_friends.shape[0] + artists_tags.shape[0], dtype=torch.bool),
             rating_mask,
-            torch.zeros(rating_begin, dtype=torch.bool),
+            torch.zeros(artists_tags.shape[0], dtype=torch.bool),
             rating_mask),
     )
     if train_ratio is not None:
-        train_rating_mask = torch.zeros(ratings.shape[0], dtype=torch.bool)
-        test_rating_mask = torch.ones(ratings.shape[0], dtype=torch.bool)
-        train_rating_idx = rd.sample([i for i in range(ratings.shape[0])], int(ratings.shape[0] * train_ratio))
+        train_rating_mask = torch.zeros(user_artists.shape[0], dtype=torch.bool)
+        test_rating_mask = torch.ones(user_artists.shape[0], dtype=torch.bool)
+        train_rating_idx = rd.sample([i for i in range(user_artists.shape[0])], int(user_artists.shape[0] * train_ratio))
         train_rating_mask[train_rating_idx] = 1
         test_rating_mask[train_rating_idx] = 0
 
         train_edge_mask = torch.cat(
             (
-                torch.ones(rating_begin, dtype=torch.bool),
+                torch.ones(bi_user_friends.shape[0] + artists_tags.shape[0], dtype=torch.bool),
                 train_rating_mask,
-                torch.ones(rating_begin, dtype=torch.bool),
+                torch.ones(artists_tags.shape[0], dtype=torch.bool),
                 train_rating_mask)
         )
 
         test_edge_mask = torch.cat(
             (
-                torch.ones(rating_begin, dtype=torch.bool),
+                torch.ones(bi_user_friends.shape[0] + artists_tags.shape[0], dtype=torch.bool),
                 test_rating_mask,
-                torch.ones(rating_begin, dtype=torch.bool),
+                torch.ones(artists_tags.shape[0], dtype=torch.bool),
                 test_rating_mask)
         )
 
-    print('Creating reverse user property edges...')
-    for _, row in tqdm.tqdm(users.iterrows(), total=users.shape[0]):
-        gender = row['gender']
-        occupation = row['occupation']
-        age = row['age']
+    print('Creating reverse artist tags property edges...')
+    aids = list(artists_tags['aid'].values)
+    tids = list(artists_tags['tid'].values)
+    artist_nids = [artist_node_id_map[aid] for aid in aids]
+    tag_nids = [tag_node_id_map[tid] for tid in tids]
+    col_idx += artist_nids
+    row_idx += tag_nids
+    edge_attrs += [[-1, relations.index('-tag')] for i in range(artists_tags.shape[0])]
 
-        u_nid = row['uid']
-        gender_nid = gender_node_id_map[gender]
-        col_idx.append(u_nid)
-        row_idx.append(gender_nid)
-
-        occupation_nid = occupation_node_id_map[occupation]
-        col_idx.append(u_nid)
-        row_idx.append(occupation_nid)
-
-        age_nid = age_node_id_map[age]
-        col_idx.append(u_nid)
-        row_idx.append(age_nid)
-    edge_attrs += [-1 for i in range(3 * users.shape[0])]
-
-    print('Creating reverse item property edges...')
-    for _, row in tqdm.tqdm(items.iterrows(), total=items.shape[0]):
-        i_nid = item_node_id_map[row['iid']]
-
-        for genre in genres:
-            if not row[genre]:
-                continue
-            g_nid = genre_node_id_map[genre]
-            col_idx.append(i_nid)
-            row_idx.append(g_nid)
-            edge_attrs.append(-1)
-
-    print('Creating reverse rating property edges...')
-    col_idx += list(users.iloc[ratings['uid']]['node_id'].values)
-    row_idx += list(items.iloc[ratings['iid']]['node_id'].values)
-    edge_attrs += list(ratings['rating'])
+    print('Creating reverse listen property edges...')
+    uids = list(user_artists['uid'].values)
+    aids = list(user_artists['aid'].values)
+    user_nids = [user_node_id_map[uid] for uid in uids]
+    artist_nids = [artist_node_id_map[aid] for aid in aids]
+    col_idx += user_nids
+    row_idx += artist_nids
+    edge_attrs += [[1, relations.index('-interaction')] for i in range(user_artists.shape[0])]
 
     row_idx = [int(idx) for idx in row_idx]
     col_idx = [int(idx) for idx in col_idx]
@@ -231,16 +184,15 @@ def convert_2_data(
     edge_index = np.concatenate((row_idx, col_idx), axis=0)
     edge_index = torch.from_numpy(edge_index).long()
     edge_attrs = np.array(edge_attrs)
-    edge_attrs = torch.from_numpy(edge_attrs).long().t()
+    edge_attrs = torch.from_numpy(edge_attrs).long()
 
     kwargs = {
-        'num_nodes': num_nodes,
+        'num_nodes': num_nodes, 'num_relations': num_relations,
         'edge_index': edge_index, 'edge_attr': edge_attrs,
         'rating_edge_mask': rating_edge_mask,
-        'users': users, 'ratings': ratings, 'items': items,
+        'tags': tags, 'user_artists': user_artists, 'artists': artists,
         'user_node_id_map': user_node_id_map,
-        'gender_node_id_map': gender_node_id_map, 'occupation_node_id_map': occupation_node_id_map,
-        'age_node_id_map': age_node_id_map, 'genre_node_id_map': genre_node_id_map
+        'artist_node_id_map': artist_node_id_map, 'tag_node_id_map': tag_node_id_map
     }
 
     if train_ratio is not None:
@@ -329,13 +281,13 @@ class LastFM(InMemoryDataset):
 
         # Remove the interactions less than num_cores, and rebuild users and artists df
         user_artists = user_artists[user_artists.listen_count > self.num_cores]
-        uids = user_artists.uid.drop_duplicates().sort_values()
         aids = user_artists.aid.drop_duplicates().sort_values()
-
-        # Remove the artists not in aids
         artists = artists[artists.aid.isin(aids)]
+        aids = artists.aid.drop_duplicates().sort_values()
+        user_artists = user_artists[user_artists.aid.isin(aids)]
+        uids = user_artists.uid.drop_duplicates().sort_values()
 
-        # Remove the users not in uids
+        # Remove the friendship not in uids
         bi_user_friends = bi_user_friends[bi_user_friends.uid.isin(uids) & bi_user_friends.fid.isin(uids)]
         bi_user_friends = bi_user_friends[bi_user_friends.uid != bi_user_friends.fid]
 
@@ -347,17 +299,16 @@ class LastFM(InMemoryDataset):
         user_taggedartists = user_taggedartists[user_taggedartists.uid.isin(uids) & user_taggedartists.aid.isin(aids)]
         tids = user_taggedartists.tid.drop_duplicates().sort_values()
         tags = tags[tags.tid.isin(tids)]
+        tids = tags.tid.drop_duplicates().sort_values()
+        user_taggedartists = user_taggedartists[user_taggedartists.tid.isin(tids)]
 
-        # Remove tags not in user_taggedartists
-        artists = pd.merge(artists, user_taggedartists[['aid', 'tid']], on='aid', how='outer')
+        uids, aids, tids, artists, tags, user_artists, bi_user_friends, user_taggedartists = \
+            reindex_df(uids, aids, tids, artists, tags, user_artists, bi_user_friends, user_taggedartists)
 
-        artists, tags, user_artists, bi_user_friends = \
-            reindex_df(uids, aids, tids, artists, tags, user_artists, bi_user_friends)
-
-        # data = convert_2_data(
-        #     artists, tags, user_artists, user_taggedartists, bi_user_friends,
-        #     self.train_ratio, self.sec_order
-        # )
+        data = convert_2_data(
+            uids, aids, tids, artists, tags, user_artists, bi_user_friends, user_taggedartists,
+            self.train_ratio, self.sec_order
+        )
 
         torch.save(self.collate([data]), self.processed_paths[0], pickle_protocol=4)
 
@@ -379,19 +330,3 @@ class LastFM(InMemoryDataset):
         else:
             suffix = '_'.join(suffixes)
         return '_' + suffix
-
-
-if __name__ == '__main__':
-    import torch
-    from torch_geometric.datasets import MovieLens
-    import os.path as osp
-
-    torch.random.manual_seed(2019)
-
-    emb_dim = 300
-    repr_dim = 64
-    batch_size = 128
-
-    root = osp.join('.', 'tmp', 'lastfm')
-    dataset = LastFM(root, '2k')
-    data = dataset.data

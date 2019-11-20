@@ -3,12 +3,12 @@ import torch.nn.functional as F
 
 from torch_geometric.nn import GATConv, PAConv
 
-from .kg_net import KGNet
+from .kg_net import ExKGNet
 
 
-class PGATNet(KGNet):
+class PGATNetEx(ExKGNet):
     def __init__(self, num_nodes, num_relations, hidden_size, emb_dim, heads, repr_dim):
-        super(PGATNet, self).__init__(emb_dim, repr_dim, num_nodes, num_relations)
+        super(PGATNetEx, self).__init__(emb_dim, repr_dim, num_nodes, num_relations)
         self.emb_dim = emb_dim
         self.repr_dim = self.repr_dim
 

@@ -2,12 +2,12 @@ import torch
 import torch.nn.functional as F
 from torch_geometric.nn import GCNConv
 
-from .kg_net import KGNet
+from .kg_net import ExKGNet
 
 
-class GCNNet(KGNet):
+class GCNNetEx(ExKGNet):
     def __init__(self, num_nodes, num_relations, hidden_size, emb_dim, repr_dim):
-        super(GCNNet, self).__init__(emb_dim, repr_dim, num_nodes, num_relations)
+        super(GCNNetEx, self).__init__(emb_dim, repr_dim, num_nodes, num_relations)
         self.emb_dim = emb_dim
         self.repr_dim = repr_dim
 

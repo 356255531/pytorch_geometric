@@ -6,9 +6,9 @@ import torch
 from torch_geometric.datasets import MovieLens
 
 from benchmark.recsys.utils import get_folder_path
-from benchmark.recsys.models import PGATNet
-from benchmark.recsys.train_eval import run_with_kg
-from benchmark.recsys.models import PGATNet
+from benchmark.recsys.models import PGATNetEx
+from benchmark.recsys.train_eval import run
+from benchmark.recsys.models import PGATNetEx
 
 class KGAT_RS(object):
     def __int__(self, weights_path):

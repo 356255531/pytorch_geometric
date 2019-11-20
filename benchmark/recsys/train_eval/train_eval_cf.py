@@ -17,9 +17,9 @@ def train_cf_single_epoch(epoch, model, train_rating_edge_iter, train_edge_index
     losses = []
     pbar = tqdm.tqdm(train_rating_edge_iter, total=len(train_rating_edge_iter))
     for batch in pbar:
-        batch_trans_edge_index, batch_edge_attr = batch
-        est_rating = model.predict(train_edge_index, batch_trans_edge_index)
-        rating = batch_edge_attr[:, 1:2].float().detach() / 5
+        batch_edge_index_t, batch_edge_attr = batch
+        est_rating = model.predict(train_edge_index, batch_edge_index_t)
+        rating = batch_edge_index_t[:, 1:2].float().detach() / 5
         loss_t = loss_func(est_rating, rating)
 
         opt.zero_grad()

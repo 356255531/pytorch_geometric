@@ -1,6 +1,6 @@
-from .run import run_with_kg, sec_order_single_run_with_kg
+from .run import run, sec_order_single_run
 
 __all__ = [
-    'run_with_kg',
-    'sec_order_single_run_with_kg'
+    'run',
+    'sec_order_single_run'
 ]

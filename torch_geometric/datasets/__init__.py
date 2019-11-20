@@ -29,6 +29,7 @@ from .dbp15k import DBP15K
 from .pascal import PascalVOCKeypoints
 from .movielens import MovieLens
 from .pascal_pf import PascalPF
+from .lastfm import LastFM
 
 __all__ = [
     'KarateClub',
@@ -62,4 +63,5 @@ __all__ = [
     'PascalVOCKeypoints',
     'MovieLens',
     'PascalPF',
+    'LastFM'
 ]

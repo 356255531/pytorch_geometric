@@ -6,13 +6,13 @@ import os.path as osp
 
 from torch_geometric.datasets import MovieLens
 
-from .pgat import PGATNet
+from .pgat import PGATNetEx
 
 
 class PGATRecSys(object):
     def __init__(self, dataset_args, model_args, train_args):
         self.data = MovieLens(**dataset_args).data.to(train_args['device'])
-        model = PGATNet(
+        model = PGATNetEx(
                 self.data.num_nodes[0],
                 self.data.num_relations[0],
                 **model_args).reset_parameters().to(train_args['device'])
