@@ -1,6 +1,7 @@
 __model__ = 'PGAT'
 
-import argparse
+import numpy as np
+import pandas as pd
 import torch
 import os.path as osp
 
@@ -10,13 +11,18 @@ from .pgat import PGATNetEx
 
 
 class PGATRecSys(object):
-    def __init__(self, dataset_args, model_args, train_args):
+    def __init__(self, num_recs, dataset_args, model_args, train_args):
+        self.num_recs = num_recs
+        self.train_args = train_args
+
         self.data = MovieLens(**dataset_args).data.to(train_args['device'])
         model = PGATNetEx(
                 self.data.num_nodes[0],
                 self.data.num_relations[0],
-                **model_args).reset_parameters().to(train_args['device'])
-        model.load_state_dict(torch.load(train_args))
+                **model_args)
+        if not dataset_args['debug']:
+            model.load_state_dict(torch.load(train_args))
+        self.model = model.to(train_args['device'])
 
     def get_top_n_popular_items(self, n=10):
         """
@@ -28,49 +34,59 @@ class PGATRecSys(object):
         :param n: the number of items, int
         :return: (item_idx, item_url, item_attr), tuple(int, str, dict(str, str))
         """
-        raise NotImplemented
+        return [i for i in range(10)]
 
-    def build_user(self, interactions, demographic_info):
+    def build_user(self, iids, demographic_info):
         """
         Build user profiles given the historical user interactions
         :param interactions: [N, 2] np.array, [:, 0] is iids and [:, 1] is ratings
         :param demographic_info: (gender, occupation), tuple
         :return:
         """
-        new_user_node_id = self.data.node_emb.shape[0]
+        # Build edges for new user
+        new_user_nid = self.model.node_emb.weight.shape[0]
+        new_user_gender_nid = self.data.gender2nid_map[demographic_info['gender']]
+        new_user_occ_nid = self.data.gender2nid_map[demographic_info['occupation']]
+        row = [new_user_nid for i in range(len(iids) + 2)]
+        col = iids + [new_user_gender_nid, new_user_occ_nid]
+        new_edge_index_np = torch.from_numpy(np.array([row, col]))
+        new_edge_index = new_edge_index_np.long().to(self.train_args['device'])
 
-        new_user_emb = torch.nn.Embedding(1, args.emb_dim).weight.to(self.device)
-        x = torch.cat([self.data.x.detach(), new_user_emb], dim=0)
+        # Build second order edges
+        new_edge_index_df = pd.DataFrame({'head': new_edge_index_np[0, :], 'middle': new_edge_index_np[1, :]})
+        edge_index_np = self.data.edge_index.numpy()
+        edge_index_df = pd.DataFrame({'middle': edge_index_np[0, :], 'tail': edge_index_np[1, :]})
+        new_sec_order_edge_df = pd.merge(new_edge_index_df, edge_index_df, on='middle')
+        new_sec_order_edge_np = new_sec_order_edge_df.to_numpy().t()
+        new_sec_order_edge = torch.from_numpy(new_sec_order_edge_np)
 
-        self.opt = torch.optim.Adam(new_user_emb, lr=args.lr, weight_decay=args.weight_decay)
+        # Get new user embedding by applying message passing
+        node_emb = self.model.node_emb.weight
+        new_user_emb = torch.tensor((1, self.model.node_emb.weight.shape[1]))
+        node_emb = torch.cat((node_emb, new_user_emb), dim=0)
+        self.new_user_emb = self.model(node_emb, new_edge_index, new_sec_order_edge)[-1, :]
+        print('user building done...')
 
-        new_edge_index = create_new_edge_index(
-            self.data, interactions, demographic_info, self.device
-        )
-        new_sec_order_edge_index = create_sec_order_new_edge_index(
-            new_edge_index, self.data.edge_index, self.device
-        )
+    def get_recommendations(self):
+        # Estimate the feedback values and get the recommendation
+        iids = self.get_top_n_popular_items(self.num_recs + 10)
+        rec_iids = self.get_top_n_popular_items(100)
+        rec_iids = [iid for iid in rec_iids if rec_iids not in iids]
+        rec_nids = [self.data.iid2node_map[iid] for iid in rec_iids]
+        rec_item_emb = self.model.node_emb.weight[rec_nids]
+        est_feedback = torch.sum(self.new_user_emb * rec_item_emb, dim=1).reshape(-1).numpy()
+        rec_iid_idx = np.argsort(est_feedback)[self.num_recs]
+        rec_iids = rec_iids[rec_iid_idx]
 
-        for _ in args.epochs:
-            user_repr = self.model(x, new_edge_index, new_sec_order_edge_index)[-1:, :]
-            i_node_ids = np.array([self.data.items.loc[self.data.items['iid'] == iid] for iid in iids])
-            item_repr = x[i_node_ids]
-            loss_t = self.loss_func(torch.sum(user_repr * item_repr, dim=1), ratings)
+        return rec_iids
 
-            self.opt.zero_gradients()
-            loss_t.backward()
-            self.opt.step()
-
-            user_repr = self.model(x, new_edge_index, new_sec_order_edge_index)[-1:, :]
-        self.new_user_repr = user_repr
-
-    @staticmethod
-    def get_weights_path(dataset_args, model_args, train_args):
-        params = 'hs{}_lr{}_core{}_reprdim{}'.format(
-            model_args['hidden_size'],
-            train_args['lr'], dataset_args['num_core'], model_args['repr_dim'])
-        if train_args['model'] == 'GAT' or train_args['model'] == 'PGAT':
-            params = 'heads{}_'.format(model_args['heads']) + params
-        debug = '' if not train_args['debug'] else '_debug{}'.format(train_args['debug'])
-        weights_path = osp.join(train_args['weights_folder'], params + debug)
-        return weights_path
+    # @staticmethod
+    # def get_weights_path(dataset_args, model_args, train_args):
+    #     params = 'hs{}_lr{}_core{}_reprdim{}'.format(
+    #         model_args['hidden_size'],
+    #         train_args['lr'], dataset_args['num_core'], model_args['repr_dim'])
+    #     if train_args['model'] == 'GAT' or train_args['model'] == 'PGAT':
+    #         params = 'heads{}_'.format(model_args['heads']) + params
+    #     debug = '' if not train_args['debug'] else '_debug{}'.format(train_args['debug'])
+    #     weights_path = osp.join(train_args['weights_folder'], params + debug)
+    #     return weights_path

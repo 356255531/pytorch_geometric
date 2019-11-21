@@ -33,7 +33,10 @@ class PGATNetEx(ExKGNet):
         self.conv1.reset_parameters()
         self.conv2.reset_parameters()
 
-    def forward(self, edge_index, sec_order_edge_index):
+    def forward_(self, edge_index, sec_order_edge_index):
+        self.forward(self.node_emb.weight, edge_index, sec_order_edge_index)
+
+    def forward(self, x, edge_index, sec_order_edge_index):
         '''
 
         :param edge_index: np.array, [2, N]
