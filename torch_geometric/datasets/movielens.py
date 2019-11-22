@@ -33,6 +33,7 @@ def reindex_df(users, items, interactions):
 
     raw_uid2uid = {raw_uid: uid for raw_uid, uid in zip(raw_uids, uids)}
     raw_iid2iid = {raw_iid: iid for raw_iid, iid in zip(raw_iids, iids)}
+    iid2raw_iid = {iid: raw_iid for raw_iid, iid in zip(raw_iids, iids)}
 
     rating_uids = np.array(interactions.uid, dtype=np.int)
     rating_iids = np.array(interactions.iid, dtype=np.int)
@@ -43,11 +44,11 @@ def reindex_df(users, items, interactions):
     interactions.loc[:, 'uid'] = rating_uids
     interactions.loc[:, 'iid'] = rating_iids
 
-    return users, items, interactions
+    return users, items, interactions, iid2raw_iid
 
 
 def convert_2_data(
-        users, items, ratings,
+        users, items, ratings, iid2raw_iid,
         train_ratio, sec_order):
     """
     Entitiy node include (gender, occupation, genres)
@@ -211,6 +212,7 @@ def convert_2_data(
         'edge_index': edge_index, 'edge_attr': edge_attrs,
         'rating_edge_mask': rating_edge_mask,
         'users': users, 'ratings': ratings, 'items': items,
+        'iid2raw_iid': iid2raw_iid,
         'user_node_id_map': user_node_id_map,
         'gender_node_id_map': gender_node_id_map, 'occupation_node_id_map': occupation_node_id_map,
         'age_node_id_map': age_node_id_map, 'genre_node_id_map': genre_node_id_map
@@ -311,9 +313,9 @@ class MovieLens(InMemoryDataset):
         users = users[users.uid.isin(ratings['uid'])]
         items = items[items.iid.isin(ratings['iid'])]
 
-        users, items, ratings = reindex_df(users, items, ratings)
+        users, items, ratings, iid2raw_iid = reindex_df(users, items, ratings)
 
-        data = convert_2_data(users, items, ratings, self.train_ratio, self.sec_order)
+        data = convert_2_data(users, items, ratings, iid2raw_iid, self.train_ratio, self.sec_order)
 
         torch.save(self.collate([data]), self.processed_paths[0], pickle_protocol=4)
 
