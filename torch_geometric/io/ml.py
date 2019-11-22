@@ -4,22 +4,24 @@ import pandas as pd
 from os.path import join
 import requests
 import json
+import tqdm
 
 apikey = 'e760129c'
 
-def get_director(movie_title, movie_year):
-    movie_url = "http://www.omdbapi.com/?" + "t=" + movie_title + "&y=" + movie_year + "&apikey=" + apikey
-    r = requests.get(movie_url)
-    movie_info_dic = json.loads(r.text)
-    director = movie_info_dic['Director']
-    return director
 
-def get_actors(movie_title, movie_year):
+def get_director_actors(movie_title, movie_year):
     movie_url = "http://www.omdbapi.com/?" + "t=" + movie_title + "&y=" + movie_year + "&apikey=" + apikey
-    r = requests.get(movie_url)
-    movie_info_dic = json.loads(r.text)
-    actors = movie_info_dic['Actors']
-    return actors
+    try:
+        r = requests.get(movie_url)
+        movie_info_dic = json.loads(r.text)
+    except:
+        return '', ''
+
+    director = movie_info_dic.get('Director', '')
+    actors = movie_info_dic.get('Actors', '')
+
+    return director, actors
+
 
 def get_poster(movie_title, movie_year):
     movie_url = "http://www.omdbapi.com/?" + "t=" + movie_title + "&y=" + movie_year + "&apikey=" + apikey
@@ -27,6 +29,7 @@ def get_poster(movie_title, movie_year):
     movie_info_dic = json.loads(r.text)
     poster = movie_info_dic['Poster']
     return poster
+
 
 def read_ml(raw_dir, debug=None):
     """
@@ -68,15 +71,14 @@ def read_ml(raw_dir, debug=None):
         pd.DataFrame(movies)
             .fillna(False)
             .astype({'year': 'category'}))
-
-    # for i in range(0,movies.count):
-    #     try:
-    #
-    #     except:
-    #         movies['director']
-    #     else:
-    #
-    #     finally:
+    movie_titles, movie_years = movies.title.values, movies.year.values
+    pbar = tqdm.tqdm(zip(movie_titles, movie_years), total=movies.shape[0])
+    print('Getting directors and actors...')
+    director_actors = [get_director_actors(title, str(year)) for title, year in pbar]
+    directors = [i[0] for i in director_actors]
+    actors = [i[1] for i in director_actors]
+    movies['director'] = directors
+    movies['actors'] = actors
 
     ratings = []
     with open(join(raw_dir, 'ratings.dat')) as f:
