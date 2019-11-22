@@ -208,7 +208,7 @@ def convert_2_data(
     edge_attrs = torch.from_numpy(edge_attrs).long().t()
 
     kwargs = {
-        'num_nodes': num_nodes,
+        'num_nodes': num_nodes, 'num_relations': 8,
         'edge_index': edge_index, 'edge_attr': edge_attrs,
         'rating_edge_mask': rating_edge_mask,
         'users': users, 'ratings': ratings, 'items': items,
