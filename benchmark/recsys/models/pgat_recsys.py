@@ -26,20 +26,26 @@ class PGATRecSys(object):
 
     def get_top_n_popular_items(self, n=10):
         """
+        TODO: Zhe
         Get the top n movies from self.data.ratings.
         Remove the duplicates in self.data.ratings and sort it by movie count.
         After you find the top N popular movies' item id,
         look over the details information of item in self.data.movies
 
         :param n: the number of items, int
-        :return: (item_idx, item_url, item_attr), tuple(int, str, dict(str, str))
+        :return: df: popular item dataframe, df
         """
-        return [i for i in range(10)]
+
+        ratings_df = self.data.ratings
+        ratings_df = ratings_df.drop_duplicates('iid','first',inplace=True)
+        ratings_df = ratings_df.sort_index(axis=0,by='movie_count',ascending=False)
+
+        return ratings_df[:n]
 
     def build_user(self, iids, demographic_info):
         """
         Build user profiles given the historical user interactions
-        :param interactions: [N, 2] np.array, [:, 0] is iids and [:, 1] is ratings
+        :param iids: user selected item ids, list
         :param demographic_info: (gender, occupation), tuple
         :return:
         """
@@ -78,7 +84,9 @@ class PGATRecSys(object):
         rec_iid_idx = np.argsort(est_feedback)[self.num_recs]
         rec_iids = rec_iids[rec_iid_idx]
 
-        return rec_iids
+        df = self.data.items[self.data.items.iid.isin(rec_iids)]
+
+        return df
 
     # @staticmethod
     # def get_weights_path(dataset_args, model_args, train_args):

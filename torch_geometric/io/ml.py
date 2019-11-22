@@ -2,7 +2,31 @@ import re
 import numpy as np
 import pandas as pd
 from os.path import join
+import requests
+import json
 
+apikey = 'e760129c'
+
+def get_director(movie_title, movie_year):
+    movie_url = "http://www.omdbapi.com/?" + "t=" + movie_title + "&y=" + movie_year + "&apikey=" + apikey
+    r = requests.get(movie_url)
+    movie_info_dic = json.loads(r.text)
+    director = movie_info_dic['Director']
+    return director
+
+def get_actors(movie_title, movie_year):
+    movie_url = "http://www.omdbapi.com/?" + "t=" + movie_title + "&y=" + movie_year + "&apikey=" + apikey
+    r = requests.get(movie_url)
+    movie_info_dic = json.loads(r.text)
+    actors = movie_info_dic['Actors']
+    return actors
+
+def get_poster(movie_title, movie_year):
+    movie_url = "http://www.omdbapi.com/?" + "t=" + movie_title + "&y=" + movie_year + "&apikey=" + apikey
+    r = requests.get(movie_url)
+    movie_info_dic = json.loads(r.text)
+    poster = movie_info_dic['Poster']
+    return poster
 
 def read_ml(raw_dir, debug=None):
     """
@@ -44,6 +68,15 @@ def read_ml(raw_dir, debug=None):
         pd.DataFrame(movies)
             .fillna(False)
             .astype({'year': 'category'}))
+
+    # for i in range(0,movies.count):
+    #     try:
+    #
+    #     except:
+    #         movies['director']
+    #     else:
+    #
+    #     finally:
 
     ratings = []
     with open(join(raw_dir, 'ratings.dat')) as f:
