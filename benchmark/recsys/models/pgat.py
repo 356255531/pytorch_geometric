@@ -3,28 +3,26 @@ import torch.nn.functional as F
 
 from torch_geometric.nn import GATConv, PAConv
 
-from .kg_net import ExKGNet
+from .kg_net import KGNet
 
 
-class PGATNetEx(ExKGNet):
-    def __init__(self, num_nodes, num_relations, hidden_size, emb_dim, heads, repr_dim):
-        super(PGATNetEx, self).__init__(emb_dim, repr_dim, num_nodes, num_relations)
-        self.emb_dim = emb_dim
-        self.repr_dim = self.repr_dim
-
-        self.node_emb = torch.nn.Embedding(num_nodes, emb_dim, max_norm=1, norm_type=2.0)
-        self.r_emb = torch.nn.Embedding(num_relations, repr_dim, max_norm=1, norm_type=2.0)
-        self.r_proj = torch.nn.Embedding(
-            num_relations, emb_dim * repr_dim, max_norm=1, norm_type=2.0
-        )
-
-        self.kg_loss_func = torch.nn.MSELoss()
+class KGPGATNet(KGNet):
+    def __init__(self, emb_dim, num_nodes, num_relations, pretrain, hidden_size, heads, proj_node=None):
+        super(KGPGATNet, self).__init__(emb_dim, num_nodes, num_relations, pretrain)
+        if proj_node == 'trans_e' or proj_node is None:
+            self.proj_kg_node = self.trans_e_project
+        elif pretrain == 'trans_r':
+            self.proj_kg_node = self.trans_r_project
+        elif pretrain == 'trans_h':
+            self.proj_kg_node = self.trans_h_project
+        else:
+            raise NotImplementedError('Pretain: {} not implemented!'.format(pretrain))
 
         self.conv1 = GATConv(
             emb_dim, int(hidden_size // heads),
             heads=heads, dropout=0.6)
         self.conv2 = PAConv(
-            int(hidden_size // heads) * heads, repr_dim,
+            int(hidden_size // heads) * heads, emb_dim,
             heads=1, dropout=0.6)
         # self.conv1 = ChebConv(data.num_features, 16, K=2)
         # self.conv2 = ChebConv(16, data.num_features, K=2)

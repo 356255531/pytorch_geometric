@@ -2,25 +2,23 @@ import torch
 import torch.nn.functional as F
 from torch_geometric.nn import GATConv
 
-from .kg_net import ExKGNet
+from .kg_net import KGNet
 
 
-class GATNetEx(ExKGNet):
-    def __init__(self, num_nodes, num_relations, hidden_size, heads, emb_dim, repr_dim):
-        super(GATNetEx, self).__init__(emb_dim, repr_dim, num_nodes, num_relations)
-        self.emb_dim = emb_dim
-        self.repr_dim = repr_dim
+class KGGATNet(KGNet):
+    def __init__(self, emb_dim, num_nodes, num_relations, pretrain, hidden_size, heads, proj_node=None):
+        super(KGGATNet, self).__init__(emb_dim, num_nodes, num_relations, pretrain)
+        if proj_node == 'trans_e' or proj_node is None:
+            self.proj_kg_node = self.trans_e_project
+        elif pretrain == 'trans_r':
+            self.proj_kg_node = self.trans_r_project
+        elif pretrain == 'trans_h':
+            self.proj_kg_node = self.trans_h_project
+        else:
+            raise NotImplementedError('Pretain: {} not implemented!'.format(pretrain))
 
-        self.node_emb = torch.nn.Embedding(num_nodes, emb_dim, max_norm=1, norm_type=2.0)
-        self.r_emb = torch.nn.Embedding(num_relations, repr_dim, max_norm=1, norm_type=2.0)
-        self.r_proj = torch.nn.Embedding(
-            num_relations, emb_dim * repr_dim, max_norm=1, norm_type=2.0
-        )
-
-        self.kg_loss_func = torch.nn.MSELoss()
-
-        self.conv1 = GATConv(emb_dim, hidden_size // heads, heads=heads, dropout=0.6)
-        self.conv2 = GATConv(hidden_size, repr_dim, heads=1, concat=True, dropout=0.6)
+        self.conv1 = GATConv(emb_dim, int(hidden_size // heads), heads=heads, dropout=0.6)
+        self.conv2 = GATConv(int(hidden_size // heads) * heads, emb_dim, heads=1, concat=True, dropout=0.6)
 
     def reset_parameters(self):
         self.conv1.reset_parameters()

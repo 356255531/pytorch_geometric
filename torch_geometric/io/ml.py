@@ -72,13 +72,13 @@ def read_ml(raw_dir, debug=None):
             .fillna(False)
             .astype({'year': 'category'}))
     movie_titles, movie_years = movies.title.values, movies.year.values
-    pbar = tqdm.tqdm(zip(movie_titles, movie_years), total=movies.shape[0])
-    print('Getting directors and actors...')
-    director_actors = [get_director_actors(title, str(year)) for title, year in pbar]
-    directors = [i[0] for i in director_actors]
-    actors = [i[1] for i in director_actors]
-    movies['director'] = directors
-    movies['actors'] = actors
+    # pbar = tqdm.tqdm(zip(movie_titles, movie_years), total=movies.shape[0])
+    # print('Getting directors and actors...')
+    # director_actors = [get_director_actors(title, str(year)) for title, year in pbar]
+    # directors = [i[0] for i in director_actors]
+    # actors = [i[1] for i in director_actors]
+    # movies['director'] = directors
+    # movies['actors'] = actors
 
     ratings = []
     with open(join(raw_dir, 'ratings.dat')) as f:

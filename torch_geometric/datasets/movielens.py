@@ -51,12 +51,12 @@ def convert_2_data(
         train_ratio, sec_order):
     """
     Entitiy node include (gender, occupation, genres)
-
     n_nodes = n_users + n_items + n_genders + n_occupation + n_ages + n_genres
-
     """
     n_users = users.shape[0]
     n_items = items.shape[0]
+
+    relations = ['gender', 'occupation', 'age', 'genre', 'interact', '-gender', '-occupation', '-age', '-genre', '-interact']
 
     genders = ['M', 'F']
     n_genders = len(genders)
@@ -80,8 +80,8 @@ def convert_2_data(
     item_node_id_map = {iid: n_users + i for i, iid in enumerate(items['iid'].values)}
     gender_node_id_map = {gender: n_users + n_items + i for i, gender in enumerate(genders)}
     occupation_node_id_map = {occupation: n_users + n_items + n_genders + i for i, occupation in enumerate(occupations)}
-    genre_node_id_map = {genre: n_users + n_items + n_genders + n_occupations + i for i, genre in enumerate(genres)}
-    age_node_id_map = {genre: n_users + n_items + n_genders + n_occupations + n_ages + i for i, genre in enumerate(ages)}
+    age_node_id_map = {genre: n_users + n_items + n_genders + n_occupations + i for i, genre in enumerate(ages)}
+    genre_node_id_map = {genre: n_users + n_items + n_genders + n_occupations + n_ages + i for i, genre in enumerate(genres)}
 
     # Start creating edges
     row_idx, col_idx = [], []
@@ -99,15 +99,17 @@ def convert_2_data(
         gender_nid = gender_node_id_map[gender]
         row_idx.append(u_nid)
         col_idx.append(gender_nid)
+        edge_attrs.append([relations.index('gender'), -1])
 
         occupation_nid = occupation_node_id_map[occupation]
         row_idx.append(u_nid)
         col_idx.append(occupation_nid)
+        edge_attrs.append([relations.index('occupation'), -1])
 
         age_nid = age_node_id_map[age]
         row_idx.append(u_nid)
         col_idx.append(age_nid)
-    edge_attrs += [-1 for i in range(3 * users.shape[0])]
+        edge_attrs.append([relations.index('age'), -1])
     rating_begin += 3 * users.shape[0]
 
     print('Creating item property edges...')
@@ -120,13 +122,13 @@ def convert_2_data(
             g_nid = genre_node_id_map[genre]
             row_idx.append(i_nid)
             col_idx.append(g_nid)
-            edge_attrs.append(-1)
+            edge_attrs.append([relations.index('genre'), -1])
             rating_begin += 1
 
     print('Creating rating property edges...')
     row_idx += list(users.iloc[ratings['uid']]['node_id'].values)
     col_idx += list(items.iloc[ratings['iid']]['node_id'].values)
-    edge_attrs += list(ratings['rating'])
+    edge_attrs += [[relations.index('interact'), i] for i in list(ratings['rating'])]
 
     print('Building masks...')
     rating_mask = torch.ones(ratings.shape[0], dtype=torch.bool)
@@ -170,15 +172,17 @@ def convert_2_data(
         gender_nid = gender_node_id_map[gender]
         col_idx.append(u_nid)
         row_idx.append(gender_nid)
+        edge_attrs.append([relations.index('-gender'), -1])
 
         occupation_nid = occupation_node_id_map[occupation]
         col_idx.append(u_nid)
         row_idx.append(occupation_nid)
+        edge_attrs.append([relations.index('-occupation'), -1])
 
         age_nid = age_node_id_map[age]
         col_idx.append(u_nid)
         row_idx.append(age_nid)
-    edge_attrs += [-1 for i in range(3 * users.shape[0])]
+        edge_attrs.append([relations.index('-age'), -1])
 
     print('Creating reverse item property edges...')
     for _, row in tqdm.tqdm(items.iterrows(), total=items.shape[0]):
@@ -190,12 +194,12 @@ def convert_2_data(
             g_nid = genre_node_id_map[genre]
             col_idx.append(i_nid)
             row_idx.append(g_nid)
-            edge_attrs.append(-1)
+            edge_attrs.append([relations.index('-genre'), -1])
 
     print('Creating reverse rating property edges...')
     col_idx += list(users.iloc[ratings['uid']]['node_id'].values)
     row_idx += list(items.iloc[ratings['iid']]['node_id'].values)
-    edge_attrs += list(ratings['rating'])
+    edge_attrs += [[relations.index('-interact'), i] for i in list(ratings['rating'])]
 
     row_idx = [int(idx) for idx in row_idx]
     col_idx = [int(idx) for idx in col_idx]
@@ -204,13 +208,14 @@ def convert_2_data(
     edge_index = np.concatenate((row_idx, col_idx), axis=0)
     edge_index = torch.from_numpy(edge_index).long()
     edge_attrs = np.array(edge_attrs)
-    edge_attrs = torch.from_numpy(edge_attrs).long().t()
+    edge_attrs = torch.from_numpy(edge_attrs).long()
 
     kwargs = {
         'num_nodes': num_nodes,
         'edge_index': edge_index, 'edge_attr': edge_attrs,
         'rating_edge_mask': rating_edge_mask,
         'users': users, 'ratings': ratings, 'items': items,
+        'relations': relations, 'num_relations': len(relations),
         'user_node_id_map': user_node_id_map,
         'gender_node_id_map': gender_node_id_map, 'occupation_node_id_map': occupation_node_id_map,
         'age_node_id_map': age_node_id_map, 'genre_node_id_map': genre_node_id_map
@@ -336,3 +341,18 @@ class MovieLens(InMemoryDataset):
             suffix = '_'.join(suffixes)
         return '_' + suffix
 
+
+if __name__ == '__main__':
+    import torch
+    from torch_geometric.datasets import MovieLens
+    import os.path as osp
+
+    torch.random.manual_seed(2019)
+
+    emb_dim = 300
+    repr_dim = 64
+    batch_size = 128
+
+    root = osp.join('.', 'tmp', 'ml')
+    dataset = MovieLens(root, '1m', train_ratio=0.8, sec_order=False)
+    data = dataset.data

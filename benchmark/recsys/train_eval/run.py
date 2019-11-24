@@ -8,9 +8,9 @@ from .train_eval import single_run, sec_order_single_run
 
 def run(model_class, model_args, dataset_args, train_args):
     # Create new checkpoin folders and clear it
-    params = 'hs{}_lr{}_core{}_reprdim{}'.format(
+    params = 'hs{}_lr{}_core{}_embdim{}'.format(
         model_args['hidden_size'],
-        train_args['lr'], dataset_args['num_core'], model_args['repr_dim'])
+        train_args['lr'], dataset_args['num_core'], model_args['emb_dim'])
     if train_args['model'] == 'GAT' or train_args['model'] == 'PGAT':
         params = 'heads{}_'.format(model_args['heads']) + params
     debug = '' if not train_args['debug'] else '_debug{}'.format(train_args['debug'])

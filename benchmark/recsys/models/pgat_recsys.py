@@ -7,7 +7,7 @@ import os.path as osp
 
 from torch_geometric.datasets import MovieLens
 
-from .pgat import PGATNetEx
+from .pgat import KGNet
 
 
 class PGATRecSys(object):
@@ -36,7 +36,7 @@ class PGATRecSys(object):
         :return: df: popular item dataframe, df
         """
 
-        ratings_df = self.data.ratings
+        ratings_df = self.data.ratings[0]
         ratings_df = ratings_df.drop_duplicates('iid','first',inplace=True)
         ratings_df = ratings_df.sort_index(axis=0,by='movie_count',ascending=False)
 

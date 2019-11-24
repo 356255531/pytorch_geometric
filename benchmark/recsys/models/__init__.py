@@ -1,9 +1,9 @@
-from .gat import GATNetEx
-from .gcn import GCNNetEx
-from .pgat import PGATNetEx
+from .gat import KGGATNet
+from .gcn import KGGCNNet
+from .pgat import KGPGATNet
 
 __all__ = [
-    'GATNetEx',
-    'GCNNetEx',
-    'PGATNetEx'
+    'KGGATNet',
+    'KGGCNNet',
+    'KGPGATNet'
 ]

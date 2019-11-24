@@ -4,8 +4,8 @@ import argparse
 import torch
 
 from utils import get_folder_path
-from train_eval import run_with_kg
-from models import GCNNet
+from train_eval import run
+from models import KGGCNNet
 
 ########################################### Parse arguments ###########################################
 parser = argparse.ArgumentParser()
@@ -16,13 +16,14 @@ parser.add_argument("--dataset_name", type=str, default='1m', help="")
 parser.add_argument("--num_core", type=int, default=10, help="")
 parser.add_argument("--sec_order", type=bool, default=False, help="")
 parser.add_argument("--train_ratio", type=float, default=0.8, help="")
-parser.add_argument("--debug", default=False, help="")
+parser.add_argument("--debug", default=0.01, help="")
 
 
 # Model params
 parser.add_argument("--hidden_size", type=int, default=64, help="")
-parser.add_argument("--emb_dim", type=int, default=300, help="")
-parser.add_argument("--repr_dim", type=int, default=16, help="")
+parser.add_argument("--emb_dim", type=int, default=64, help="")
+parser.add_argument("--pretrain", type=str, default='trans_r', help="")
+
 
 # Train params
 parser.add_argument("--device", type=str, default='cuda', help="")
@@ -60,11 +61,12 @@ dataset_args = {
 }
 model_args = {
     'hidden_size': args.hidden_size, 'emb_dim': args.emb_dim,
-    'repr_dim': args.repr_dim
+    'pretrain': 'trans_r', 'proj_node': 'trans_r',
 }
 train_args = {
     'debug': args.debug, 'runs': args.runs,
     'model': __model__,
+    'pretrain': 'trans_r', 'pretrain_epochs': 10,
     'kg_opt': args.kg_opt, 'kg_loss': args.kg_loss, 'cf_loss': args.cf_loss, 'cf_opt': args.cf_opt,
     'epochs': args.epochs, 'kg_batch_size': args.kg_batch_size, 'cf_batch_size': args.cf_batch_size,
     'weight_decay': args.weight_decay, 'lr': args.lr, 'device': device,
@@ -75,7 +77,7 @@ print('train params: {}'.format(train_args))
 
 
 def main():
-    run_with_kg(GCNNet, model_args, dataset_args, train_args)
+    run(KGGCNNet, model_args, dataset_args, train_args)
 
 
 if __name__ == '__main__':
