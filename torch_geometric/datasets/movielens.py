@@ -20,13 +20,13 @@ def reindex_df(users, items, interactions):
     :param interactions: pd.DataFrame
     :return: same
     """
-    n_users = users.shape[0]
-    n_movies = items.shape[0]
+    num_users = users.shape[0]
+    num_movies = items.shape[0]
 
     raw_uids = np.array(users.uid, dtype=np.int)
     raw_iids = np.array(items.iid, dtype=np.int)
-    uids = np.arange(n_users)
-    iids = np.arange(n_movies)
+    uids = np.arange(num_users)
+    iids = np.arange(num_movies)
 
     users.loc[:, 'uid'] = uids
     items.loc[:, 'iid'] = iids
@@ -51,37 +51,44 @@ def convert_2_data(
         train_ratio, sec_order):
     """
     Entitiy node include (gender, occupation, genres)
-    n_nodes = n_users + n_items + n_genders + n_occupation + n_ages + n_genres
+    num_nodes = num_users + num_items + num_genders + num_occupation + num_ages + num_genres + num_year
     """
-    n_users = users.shape[0]
-    n_items = items.shape[0]
+    num_users = users.shape[0]
+    num_items = items.shape[0]
 
-    relations = ['gender', 'occupation', 'age', 'genre', 'interact', '-gender', '-occupation', '-age', '-genre', '-interact']
+    relations = [
+        'gender', 'occupation', 'age', 'genre', 'year', 'interact',
+        '-gender', '-occupation', '-age', '-genre', '-year', '-interact'
+    ]
 
     genders = ['M', 'F']
-    n_genders = len(genders)
+    num_genders = len(genders)
 
     occupations = list(users.occupation.unique())
-    n_occupations = len(occupations)
+    num_occupations = len(occupations)
 
     ages = ['1', '18', '25', '35', '45', '50', '56']
-    n_ages = len(ages)
+    num_ages = len(ages)
 
     genres = list(items.keys()[3:21])
-    n_genres = len(genres)
+    num_genres = len(genres)
+
+    years = list(np.unique(items.discretized_year.to_numpy()))
+    num_years = len(years)
 
     # Bulid node id
-    num_nodes = n_users + n_items + n_genders + n_occupations + n_ages + n_genres
+    num_nodes = num_users + num_items + num_genders + num_occupations + num_ages + num_genres + num_years
 
     # Build property2id map
     users['node_id'] = users['uid']
-    items['node_id'] = items['iid'] + n_users
+    items['node_id'] = items['iid'] + num_users
     user_node_id_map = {uid: i for i, uid in enumerate(users['uid'].values)}
-    item_node_id_map = {iid: n_users + i for i, iid in enumerate(items['iid'].values)}
-    gender_node_id_map = {gender: n_users + n_items + i for i, gender in enumerate(genders)}
-    occupation_node_id_map = {occupation: n_users + n_items + n_genders + i for i, occupation in enumerate(occupations)}
-    age_node_id_map = {genre: n_users + n_items + n_genders + n_occupations + i for i, genre in enumerate(ages)}
-    genre_node_id_map = {genre: n_users + n_items + n_genders + n_occupations + n_ages + i for i, genre in enumerate(genres)}
+    item_node_id_map = {iid: num_users + i for i, iid in enumerate(items['iid'].values)}
+    gender_node_id_map = {gender: num_users + num_items + i for i, gender in enumerate(genders)}
+    occupation_node_id_map = {occupation: num_users + num_items + num_genders + i for i, occupation in enumerate(occupations)}
+    age_node_id_map = {genre: num_users + num_items + num_genders + num_occupations + i for i, genre in enumerate(ages)}
+    genre_node_id_map = {genre: num_users + num_items + num_genders + num_occupations + num_ages + i for i, genre in enumerate(genres)}
+    year_node_id_map = {year: num_users + num_items + num_genders + num_occupations + num_ages + num_genres + i for i, year in enumerate(years)}
 
     # Start creating edges
     row_idx, col_idx = [], []
@@ -91,11 +98,11 @@ def convert_2_data(
 
     print('Creating user property edges...')
     for _, row in tqdm.tqdm(users.iterrows(), total=users.shape[0]):
+        u_nid = row['uid']
         gender = row['gender']
         occupation = row['occupation']
         age = row['age']
 
-        u_nid = row['uid']
         gender_nid = gender_node_id_map[gender]
         row_idx.append(u_nid)
         col_idx.append(gender_nid)
@@ -115,6 +122,10 @@ def convert_2_data(
     print('Creating item property edges...')
     for _, row in tqdm.tqdm(items.iterrows(), total=items.shape[0]):
         i_nid = item_node_id_map[row['iid']]
+        y_nid = year_node_id_map[row['discretized_year']]
+        row_idx.append(i_nid)
+        col_idx.append(y_nid)
+        edge_attrs.append([relations.index('year'), -1])
 
         for genre in genres:
             if not row[genre]:
@@ -124,6 +135,7 @@ def convert_2_data(
             col_idx.append(g_nid)
             edge_attrs.append([relations.index('genre'), -1])
             rating_begin += 1
+    rating_begin += items.shape[0]
 
     print('Creating rating property edges...')
     row_idx += list(users.iloc[ratings['uid']]['node_id'].values)
@@ -164,11 +176,11 @@ def convert_2_data(
 
     print('Creating reverse user property edges...')
     for _, row in tqdm.tqdm(users.iterrows(), total=users.shape[0]):
+        u_nid = row['uid']
         gender = row['gender']
         occupation = row['occupation']
         age = row['age']
 
-        u_nid = row['uid']
         gender_nid = gender_node_id_map[gender]
         col_idx.append(u_nid)
         row_idx.append(gender_nid)
@@ -187,6 +199,10 @@ def convert_2_data(
     print('Creating reverse item property edges...')
     for _, row in tqdm.tqdm(items.iterrows(), total=items.shape[0]):
         i_nid = item_node_id_map[row['iid']]
+        y_nid = year_node_id_map[row['discretized_year']]
+        col_idx.append(i_nid)
+        row_idx.append(y_nid)
+        edge_attrs.append([relations.index('-year'), -1])
 
         for genre in genres:
             if not row[genre]:
@@ -216,9 +232,9 @@ def convert_2_data(
         'rating_edge_mask': rating_edge_mask,
         'users': users, 'ratings': ratings, 'items': items,
         'relations': relations, 'num_relations': len(relations),
-        'user_node_id_map': user_node_id_map,
-        'gender_node_id_map': gender_node_id_map, 'occupation_node_id_map': occupation_node_id_map,
-        'age_node_id_map': age_node_id_map, 'genre_node_id_map': genre_node_id_map
+        'user_node_id_map': user_node_id_map, 'gender_node_id_map': gender_node_id_map,
+        'occupation_node_id_map': occupation_node_id_map, 'age_node_id_map': age_node_id_map,
+        'genre_node_id_map': genre_node_id_map, 'year_node_id_map': year_node_id_map
     }
 
     if train_ratio is not None:
@@ -228,12 +244,12 @@ def convert_2_data(
             print('Creating second order edges...')
             kwargs['train_sec_order_edge_index'] = \
                 get_sec_order_edge(edge_index[:, train_edge_mask])
-            kwargs['n_sec_order_edge'] = kwargs['train_sec_order_edge_index'].shape[1]
+            kwargs['num_sec_order_edge'] = kwargs['trainum_sec_order_edge_index'].shape[1]
     else:
         if sec_order:
             print('Creating second order edges...')
             kwargs['sec_order_edge_index'] = get_sec_order_edge(edge_index)
-            kwargs['n_sec_order_edge'] = kwargs['sec_order_edge_index'].shape[1]
+            kwargs['num_sec_order_edge'] = kwargs['sec_order_edge_index'].shape[1]
 
     return Data(**kwargs)
 
@@ -256,17 +272,17 @@ class MovieLens(InMemoryDataset):
                  root,
                  name,
                  sec_order=False,
-                 n_core=10,
+                 num_core=10,
                  transform=None,
                  pre_transform=None,
                  pre_filter=None,
                  **kwargs):
         self.name = name.lower()
         assert self.name in ['1m']
-        self.n_core = n_core
+        self.num_core = num_core
         self.sec_order = sec_order
 
-        self.train_ratio = kwargs.get('train_ratio', None)
+        self.trainum_ratio = kwargs.get('train_ratio', None)
         self.debug = kwargs.get('debug', False)
         self.seed = kwargs.get('seed', None)
         self.suffix = self.build_suffix()
@@ -296,6 +312,19 @@ class MovieLens(InMemoryDataset):
         # read files
         users, items, ratings = read_ml(unzip_raw_dir, self.debug)
 
+        # Discretized year
+        years = items.year.to_numpy()
+        min_year = min(years)
+        max_year = max(years)
+        num_years = (max_year - min_year) // 10
+        discretized_years = [min_year + i * 10 for i in range(num_years + 1)]
+        for i, year in enumerate(discretized_years):
+            if i == 0:
+                years[years <= year] = year
+            else:
+                years[(years <= year) & (years > year)] = year
+        items['discretized_year'] = years
+
         # remove duplications
         users = users.drop_duplicates()
         items = items.drop_duplicates()
@@ -308,9 +337,9 @@ class MovieLens(InMemoryDataset):
         ratings = ratings.join(item_count, on='iid')
         ratings = ratings.join(user_count, on='uid')
 
-        # delete ratings have movie and user count less than self.n_core
-        ratings = ratings[ratings.movie_count > self.n_core]
-        ratings = ratings[ratings.user_count > self.n_core]
+        # delete ratings have movie and user count less than self.num_core
+        ratings = ratings[ratings.movie_count > self.num_core]
+        ratings = ratings[ratings.user_count > self.num_core]
 
         # drop users and movies which do not exist in ratings
         users = users[users.uid.isin(ratings['uid'])]
@@ -318,7 +347,7 @@ class MovieLens(InMemoryDataset):
 
         users, items, ratings = reindex_df(users, items, ratings)
 
-        data = convert_2_data(users, items, ratings, self.train_ratio, self.sec_order)
+        data = convert_2_data(users, items, ratings, self.trainum_ratio, self.sec_order)
 
         torch.save(self.collate([data]), self.processed_paths[0], pickle_protocol=4)
 
@@ -327,8 +356,8 @@ class MovieLens(InMemoryDataset):
 
     def build_suffix(self):
         suffixes = []
-        if self.train_ratio is not None:
-            suffixes.append('train_{}'.format(self.train_ratio))
+        if self.trainum_ratio is not None:
+            suffixes.append('train_{}'.format(self.trainum_ratio))
         if self.debug:
             suffixes.append('debug_{}'.format(self.debug))
         if self.sec_order:
@@ -340,19 +369,3 @@ class MovieLens(InMemoryDataset):
         else:
             suffix = '_'.join(suffixes)
         return '_' + suffix
-
-
-if __name__ == '__main__':
-    import torch
-    from torch_geometric.datasets import MovieLens
-    import os.path as osp
-
-    torch.random.manual_seed(2019)
-
-    emb_dim = 300
-    repr_dim = 64
-    batch_size = 128
-
-    root = osp.join('.', 'tmp', 'ml')
-    dataset = MovieLens(root, '1m', train_ratio=0.8, sec_order=False)
-    data = dataset.data

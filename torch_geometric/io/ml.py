@@ -63,7 +63,7 @@ def read_ml(raw_dir, debug=None):
             year = title[-5:-1]
             title = title[:-6].strip()
 
-            data = {'iid': int(id_), 'title': title, 'year': year}
+            data = {'iid': int(id_), 'title': title, 'year': int(year)}
             for g in genres_set:
                 data[g] = True
             movies.append(data)

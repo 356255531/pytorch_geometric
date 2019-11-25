@@ -34,7 +34,7 @@ class KGNet(Net):
     """
     abstract GCN models with a transformation pretrain
     """
-    def __init__(self, emb_dim, num_nodes, num_relations, pretrain='trans_e'):
+    def __init__(self, num_nodes, num_relations, emb_dim, repr_dim, pretrain):
         super(KGNet, self).__init__(emb_dim, num_nodes)
         self.emb_dim = emb_dim
         self.r_emb = torch.nn.Embedding(

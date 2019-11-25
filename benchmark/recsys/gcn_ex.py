@@ -22,13 +22,15 @@ parser.add_argument("--debug", default=0.01, help="")
 # Model params
 parser.add_argument("--hidden_size", type=int, default=64, help="")
 parser.add_argument("--emb_dim", type=int, default=64, help="")
-parser.add_argument("--pretrain", type=str, default='trans_r', help="")
+parser.add_argument("--pretrain", default='trans_r', help="")
 
 
 # Train params
 parser.add_argument("--device", type=str, default='cuda', help="")
 parser.add_argument("--gpu_idx", type=str, default='0', help="")
-parser.add_argument("--runs", type=int, default=10, help="")
+parser.add_argument("--beta", type=float, default=0.5, help="")
+parser.add_argument("--runs", type=int, default=100, help="")
+parser.add_argument("--pretrain_epochs", type=int, default=10, help="")
 parser.add_argument("--epochs", type=int, default=50, help="")
 parser.add_argument("--kg_opt", type=str, default='adam', help="")
 parser.add_argument("--cf_opt", type=str, default='adam', help="")
