@@ -30,7 +30,7 @@ def run(model_class, model_args, dataset_args, train_args):
             train_statistics = sec_order_single_run(run, model_class, model_args, dataset_args, train_args)
         else:
             train_statistics = single_run(run, model_class, model_args, dataset_args, train_args)
-        if train_args['kg_pretrain']:
+        if train_args['pretrain']:
             single_run_kg_train_loss, single_run_cf_train_loss, single_run_best_kg_val_loss, single_run_best_cf_val_loss = \
                 train_statistics
             kg_train_losses.append(single_run_kg_train_loss)

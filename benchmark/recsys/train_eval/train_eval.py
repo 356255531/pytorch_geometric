@@ -37,8 +37,8 @@ def single_run(run, model_class, model_args, dataset_args, train_args):
     cf_val_losses = []
     if train_args['pretrain']:
         for epoch in range(1, train_args['pretrain_epochs'] + 1):
-            train_kg_single_epoch(epoch, model, trs_edge_iter, train_args)
-            val_kg_single_epoch(epoch, model, trs_test_rating_edge_iter)
+            kg_train_loss = train_kg_single_epoch(epoch, model, trs_edge_iter, train_args)
+            kg_val_loss = val_kg_single_epoch(epoch, model, trs_test_rating_edge_iter)
     for epoch in range(1, train_args['epochs'] + 1):
         cf_train_loss = train_cf_single_epoch(
             epoch, model,

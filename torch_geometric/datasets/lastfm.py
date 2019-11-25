@@ -106,7 +106,7 @@ def convert_2_data(
     friends_nids = [user_node_id_map[fid] for fid in fids]
     row_idx += user_nids
     col_idx += friends_nids
-    edge_attrs += [[-1, relations.index('friendship')] for i in range(bi_user_friends.shape[0])]
+    edge_attrs += [[relations.index('friendship'), -1] for i in range(bi_user_friends.shape[0])]
 
     print('Creating artist tags property edges...')
     artists_tags = user_taggedartists[['aid', 'tid']].drop_duplicates()
@@ -116,7 +116,7 @@ def convert_2_data(
     tag_nids = [tag_node_id_map[tid] for tid in tids]
     row_idx += artist_nids
     col_idx += tag_nids
-    edge_attrs += [[-1, relations.index('tag')] for i in range(artists_tags.shape[0])]
+    edge_attrs += [[relations.index('tag'), -1] for i in range(artists_tags.shape[0])]
 
     print('Creating listen property edges...')
     uids = list(user_artists['uid'].values)
@@ -125,7 +125,7 @@ def convert_2_data(
     artist_nids = [artist_node_id_map[aid] for aid in aids]
     row_idx += user_nids
     col_idx += artist_nids
-    edge_attrs += [[1, relations.index('interaction')] for i in range(user_artists.shape[0])]
+    edge_attrs += [[relations.index('interaction'), 1] for i in range(user_artists.shape[0])]
 
     print('Building masks...')
     rating_mask = torch.ones(user_artists.shape[0], dtype=torch.bool)
@@ -166,7 +166,7 @@ def convert_2_data(
     tag_nids = [tag_node_id_map[tid] for tid in tids]
     col_idx += artist_nids
     row_idx += tag_nids
-    edge_attrs += [[-1, relations.index('-tag')] for i in range(artists_tags.shape[0])]
+    edge_attrs += [[relations.index('-tag'), -1] for i in range(artists_tags.shape[0])]
 
     print('Creating reverse listen property edges...')
     uids = list(user_artists['uid'].values)
@@ -175,7 +175,7 @@ def convert_2_data(
     artist_nids = [artist_node_id_map[aid] for aid in aids]
     col_idx += user_nids
     row_idx += artist_nids
-    edge_attrs += [[1, relations.index('-interaction')] for i in range(user_artists.shape[0])]
+    edge_attrs += [[relations.index('-interaction'), 1] for i in range(user_artists.shape[0])]
 
     row_idx = [int(idx) for idx in row_idx]
     col_idx = [int(idx) for idx in col_idx]

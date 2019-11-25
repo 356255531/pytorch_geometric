@@ -61,12 +61,12 @@ dataset_args = {
 }
 model_args = {
     'hidden_size': args.hidden_size, 'emb_dim': args.emb_dim,
-    'pretrain': 'trans_r', 'proj_node': 'trans_r',
+    'pretrain': args.pretrain, 'proj_node': 'trans_r',
 }
 train_args = {
     'debug': args.debug, 'runs': args.runs,
     'model': __model__,
-    'pretrain': 'trans_r', 'pretrain_epochs': 10,
+    'pretrain': args.pretrain, 'pretrain_epochs': 10,
     'kg_opt': args.kg_opt, 'kg_loss': args.kg_loss, 'cf_loss': args.cf_loss, 'cf_opt': args.cf_opt,
     'epochs': args.epochs, 'kg_batch_size': args.kg_batch_size, 'cf_batch_size': args.cf_batch_size,
     'weight_decay': args.weight_decay, 'lr': args.lr, 'device': device,
