@@ -33,6 +33,7 @@ def reindex_df(users, items, interactions):
 
     raw_uid2uid = {raw_uid: uid for raw_uid, uid in zip(raw_uids, uids)}
     raw_iid2iid = {raw_iid: iid for raw_iid, iid in zip(raw_iids, iids)}
+    iid2raw_iid = {iid: raw_iid  for raw_iid, iid in zip(raw_iids, iids)}
 
     rating_uids = np.array(interactions.uid, dtype=np.int)
     rating_iids = np.array(interactions.iid, dtype=np.int)
@@ -43,12 +44,13 @@ def reindex_df(users, items, interactions):
     interactions.loc[:, 'uid'] = rating_uids
     interactions.loc[:, 'iid'] = rating_iids
 
-    return users, items, interactions
+    return users, items, interactions, iid2raw_iid
 
 
 def convert_2_data(
         users, items, ratings,
-        train_ratio, sec_order):
+        train_ratio, sec_order,
+        iid2raw_iid):
     """
     Entitiy node include (gender, occupation, genres)
     num_nodes = num_users + num_items + num_genders + num_occupation + num_ages + num_genres + num_year
@@ -235,7 +237,8 @@ def convert_2_data(
         'relations': relations, 'num_relations': len(relations),
         'user_node_id_map': user_node_id_map, 'gender_node_id_map': gender_node_id_map,
         'occupation_node_id_map': occupation_node_id_map, 'age_node_id_map': age_node_id_map,
-        'genre_node_id_map': genre_node_id_map, 'year_node_id_map': year_node_id_map
+        'genre_node_id_map': genre_node_id_map, 'year_node_id_map': year_node_id_map,
+        'iid2raw_iid': iid2raw_iid
     }
 
     if train_ratio is not None:
@@ -270,7 +273,7 @@ def restore(path):
 
 class MovieLens(InMemoryDataset):
     url = 'http://files.grouplens.org/datasets/movielens/'
-    aux_url = 'https://github.com/lizhedm/MADemo/blob/master/app/ml-1m/movies.dat'
+    # aux_url = 'https://github.com/lizhedm/MADemo/blob/master/app/ml-1m/movies.dat'
 
     def __init__(self,
                  root,
@@ -309,7 +312,7 @@ class MovieLens(InMemoryDataset):
         path = download_url(self.url + self.raw_file_names, self.raw_dir)
 
         extract_zip(path, self.raw_dir)
-        download_url(self.aux_url, join(self.raw_dir, self.raw_file_names.split('.')[0]))
+        # download_url(self.aux_url, join(self.raw_dir, self.raw_file_names.split('.')[0]))
 
     def process(self):
         unzip_raw_dir = join(self.raw_dir, 'ml-{}'.format(self.name))
@@ -350,9 +353,9 @@ class MovieLens(InMemoryDataset):
         users = users[users.uid.isin(ratings['uid'])]
         items = items[items.iid.isin(ratings['iid'])]
 
-        users, items, ratings = reindex_df(users, items, ratings)
+        users, items, ratings, iid2raw_iid = reindex_df(users, items, ratings)
 
-        data = convert_2_data(users, items, ratings, self.train_ratio, self.sec_order)
+        data = convert_2_data(users, items, ratings, self.train_ratio, self.sec_order, iid2raw_iid)
 
         torch.save(self.collate([data]), self.processed_paths[0], pickle_protocol=4)
 
