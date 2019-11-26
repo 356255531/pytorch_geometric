@@ -1,6 +1,5 @@
-from .run import run, sec_order_single_run
+from .run import run
 
 __all__ = [
-    'run',
-    'sec_order_single_run'
+    'run'
 ]

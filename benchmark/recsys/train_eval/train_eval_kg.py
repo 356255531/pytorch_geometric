@@ -13,8 +13,8 @@ def train_kg_single_epoch(epoch, model, edge_iter, train_args):
     losses = []
     pbar = tqdm.tqdm(edge_iter, total=len(edge_iter))
     for batch in pbar:
-        edge_index, edge_attr = batch
-        loss_t = model.get_kg_loss(edge_index, edge_attr)
+        edge_index_t, edge_attr = batch
+        loss_t = model.get_kg_loss(edge_index_t.t(), edge_attr)
 
         kg_opt.zero_grad()
         loss_t.backward()
@@ -31,8 +31,8 @@ def val_kg_single_epoch(epoch, kg_model, test_rating_edge_iter):
     losses = []
     pbar = tqdm.tqdm(test_rating_edge_iter, total=len(test_rating_edge_iter))
     for batch in pbar:
-        edge_index, edge_attr = batch
-        loss_t = kg_model.get_kg_loss(edge_index, edge_attr)
+        edge_index_t, edge_attr = batch
+        loss_t = kg_model.get_kg_loss(edge_index_t.t(), edge_attr)
 
         losses.append(float(loss_t.detach()))
         loss = np.mean(losses)

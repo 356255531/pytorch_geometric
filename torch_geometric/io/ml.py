@@ -40,8 +40,8 @@ def read_ml(raw_dir, debug=None):
     """
     users = []
     with open(join(raw_dir, 'users.dat')) as f:
-        for l in f:
-            id_, gender, age, occupation, zip_ = l.strip().split('::')
+        for line in f:
+            id_, gender, age, occupation, zip_ = line.strip().split('::')
             users.append({
                 'uid': int(id_),
                 'gender': gender,
@@ -54,8 +54,8 @@ def read_ml(raw_dir, debug=None):
     movies = []
     # read movies
     with open(join(raw_dir, 'movies.dat'), encoding='latin1') as f:
-        for l in f:
-            id_, title, genres = l.strip().split('::')
+        for line in f:
+            id_, title, genres = line.strip().split('::')
             genres_set = set(genres.split('|'))
 
             # extract year
@@ -71,7 +71,7 @@ def read_ml(raw_dir, debug=None):
         pd.DataFrame(movies)
             .fillna(False)
             .astype({'year': 'category'}))
-    movie_titles, movie_years = movies.title.values, movies.year.values
+    # movie_titles, movie_years = movies.title.values, movies.year.values
     # pbar = tqdm.tqdm(zip(movie_titles, movie_years), total=movies.shape[0])
     # print('Getting directors and actors...')
     # director_actors = [get_director_actors(title, str(year)) for title, year in pbar]
@@ -82,8 +82,8 @@ def read_ml(raw_dir, debug=None):
 
     ratings = []
     with open(join(raw_dir, 'ratings.dat')) as f:
-        for l in f:
-            user_id, movie_id, rating, timestamp = [int(_) for _ in l.split('::')]
+        for line in f:
+            user_id, movie_id, rating, timestamp = [int(_) for _ in line.split('::')]
             ratings.append({
                 'uid': user_id,
                 'iid': movie_id,

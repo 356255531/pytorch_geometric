@@ -80,8 +80,8 @@ def convert_2_data(
     num_nodes = num_users + num_items + num_genders + num_occupations + num_ages + num_genres + num_years
 
     # Build property2id map
-    users['node_id'] = users['uid']
-    items['node_id'] = items['iid'] + num_users
+    users['nid'] = users['uid']
+    items['nid'] = items['iid'] + num_users
     user_node_id_map = {uid: i for i, uid in enumerate(users['uid'].values)}
     item_node_id_map = {iid: num_users + i for i, iid in enumerate(items['iid'].values)}
     gender_node_id_map = {gender: num_users + num_items + i for i, gender in enumerate(genders)}
@@ -138,8 +138,8 @@ def convert_2_data(
     rating_begin += items.shape[0]
 
     print('Creating rating property edges...')
-    row_idx += list(users.iloc[ratings['uid']]['node_id'].values)
-    col_idx += list(items.iloc[ratings['iid']]['node_id'].values)
+    row_idx += list(users.iloc[ratings['uid']]['nid'].values)
+    col_idx += list(items.iloc[ratings['iid']]['nid'].values)
     edge_attrs += [[relations.index('interact'), i] for i in list(ratings['rating'])]
 
     print('Building masks...')
@@ -155,6 +155,7 @@ def convert_2_data(
         train_rating_mask = torch.zeros(ratings.shape[0], dtype=torch.bool)
         test_rating_mask = torch.ones(ratings.shape[0], dtype=torch.bool)
         train_rating_idx = rd.sample([i for i in range(ratings.shape[0])], int(ratings.shape[0] * train_ratio))
+        test_rating_idx = [i for i in range(ratings.shape[0]) if i not in train_rating_idx]
         train_rating_mask[train_rating_idx] = 1
         test_rating_mask[train_rating_idx] = 0
 
@@ -213,8 +214,8 @@ def convert_2_data(
             edge_attrs.append([relations.index('-genre'), -1])
 
     print('Creating reverse rating property edges...')
-    col_idx += list(users.iloc[ratings['uid']]['node_id'].values)
-    row_idx += list(items.iloc[ratings['iid']]['node_id'].values)
+    col_idx += list(users.iloc[ratings['uid']]['nid'].values)
+    row_idx += list(items.iloc[ratings['iid']]['nid'].values)
     edge_attrs += [[relations.index('-interact'), i] for i in list(ratings['rating'])]
 
     row_idx = [int(idx) for idx in row_idx]
@@ -238,13 +239,15 @@ def convert_2_data(
     }
 
     if train_ratio is not None:
+        kwargs['train_rating_idx'] = train_rating_idx
+        kwargs['test_rating_idx'] = test_rating_idx
         kwargs['train_edge_mask'] = train_edge_mask
         kwargs['test_edge_mask'] = test_edge_mask
         if sec_order:
             print('Creating second order edges...')
             kwargs['train_sec_order_edge_index'] = \
                 get_sec_order_edge(edge_index[:, train_edge_mask])
-            kwargs['num_sec_order_edge'] = kwargs['trainum_sec_order_edge_index'].shape[1]
+            kwargs['num_sec_order_edge'] = kwargs['train_sec_order_edge_index'].shape[1]
     else:
         if sec_order:
             print('Creating second order edges...')
@@ -267,28 +270,29 @@ def restore(path):
 
 class MovieLens(InMemoryDataset):
     url = 'http://files.grouplens.org/datasets/movielens/'
+    aux_url = 'https://github.com/lizhedm/MADemo/blob/master/app/ml-1m/movies.dat'
 
     def __init__(self,
                  root,
                  name,
-                 sec_order=False,
-                 num_core=10,
                  transform=None,
                  pre_transform=None,
                  pre_filter=None,
                  **kwargs):
         self.name = name.lower()
         assert self.name in ['1m']
-        self.num_core = num_core
-        self.sec_order = sec_order
-
-        self.trainum_ratio = kwargs.get('train_ratio', None)
+        self.num_core = kwargs.get('num_core', 10)
+        self.sec_order = kwargs.get('sec_order', False)
+        self.implicit = kwargs.get('implicit', False)
+        self.train_ratio = kwargs.get('train_ratio', None)
         self.debug = kwargs.get('debug', False)
         self.seed = kwargs.get('seed', None)
         self.suffix = self.build_suffix()
         super(MovieLens, self).__init__(root, transform, pre_transform, pre_filter)
 
         self.data, self.slices = torch.load(self.processed_paths[0])
+        if self.implicit:
+            self.data.edge_attr[self.data.rating_edge_mask[0], 1] = 1
         print('Graph params: {}'.format(self.data))
 
         print('Dataset loaded!')
@@ -305,6 +309,7 @@ class MovieLens(InMemoryDataset):
         path = download_url(self.url + self.raw_file_names, self.raw_dir)
 
         extract_zip(path, self.raw_dir)
+        download_url(self.aux_url, join(self.raw_dir, self.raw_file_names.split('.')[0]))
 
     def process(self):
         unzip_raw_dir = join(self.raw_dir, 'ml-{}'.format(self.name))
@@ -347,7 +352,7 @@ class MovieLens(InMemoryDataset):
 
         users, items, ratings = reindex_df(users, items, ratings)
 
-        data = convert_2_data(users, items, ratings, self.trainum_ratio, self.sec_order)
+        data = convert_2_data(users, items, ratings, self.train_ratio, self.sec_order)
 
         torch.save(self.collate([data]), self.processed_paths[0], pickle_protocol=4)
 
@@ -356,8 +361,8 @@ class MovieLens(InMemoryDataset):
 
     def build_suffix(self):
         suffixes = []
-        if self.trainum_ratio is not None:
-            suffixes.append('train_{}'.format(self.trainum_ratio))
+        if self.train_ratio is not None:
+            suffixes.append('train_{}'.format(self.train_ratio))
         if self.debug:
             suffixes.append('debug_{}'.format(self.debug))
         if self.sec_order:
