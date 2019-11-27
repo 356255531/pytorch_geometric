@@ -51,34 +51,71 @@ def read_ml(raw_dir, debug=None):
             })
     users = pd.DataFrame(users)
 
-    movies = []
-    # read movies
-    with open(join(raw_dir, 'movies.dat'), encoding='latin1') as f:
-        for line in f:
-            id_, title, genres = line.strip().split('::')
-            genres_set = set(genres.split('|'))
+    try:
+        movies = pd.read_csv(join(raw_dir, 'new_movies.dat'))
+    except:
+        movies = []
 
-            # extract year
-            assert re.match(r'.*\([0-9]{4}\)$', title)
-            year = title[-5:-1]
-            title = title[:-6].strip()
+        # read movies
+        with open(join(raw_dir, 'movies.dat'), encoding='latin1') as f:
+            for line in f:
+                id_, title, genres = line.strip().split('::')
+                genres_set = set(genres.split('|'))
 
-            data = {'iid': int(id_), 'title': title, 'year': int(year)}
-            for g in genres_set:
-                data[g] = True
-            movies.append(data)
-    movies = (
-        pd.DataFrame(movies)
-            .fillna(False)
-            .astype({'year': 'category'}))
-    # movie_titles, movie_years = movies.title.values, movies.year.values
-    # pbar = tqdm.tqdm(zip(movie_titles, movie_years), total=movies.shape[0])
-    # print('Getting directors and actors...')
-    # director_actors = [get_director_actors(title, str(year)) for title, year in pbar]
-    # directors = [i[0] for i in director_actors]
-    # actors = [i[1] for i in director_actors]
-    # movies['director'] = directors
-    # movies['actors'] = actors
+                # extract year
+                assert re.match(r'.*\([0-9]{4}\)$', title)
+                year = title[-5:-1]
+                title = title[:-6].strip()
+
+                data = {'iid': int(id_), 'title': title, 'year': int(year)}
+                for g in genres_set:
+                    data[g] = True
+                movies.append(data)
+        movies = (
+            pd.DataFrame(movies)
+                .fillna(False)
+                .astype({'year': 'category'}))
+
+        apikey = ''
+        key1 = 'e760129c'
+        key2 = 'e44e5305'
+        key3 = '8403a97b'
+        key4 = '192c6b0e'
+
+        director_list = []
+        actor_list = []
+        writer_list = []
+
+        pbar = tqdm.tqdm(zip(movies.title, movies.year), total=movies.shape[0])
+        for i, (title, year) in enumerate(pbar):
+            if i in range(0, 1000):
+                apikey = key1
+            if i in range(1000, 2000):
+                apikey = key2
+            if i in range(2000, 3000):
+                apikey = key3
+            if i in range(3000, 4000):
+                apikey = key4
+
+            movie_url = "http://www.omdbapi.com/?" + "t=" + title + "&y=" + str(year) + "&apikey=" + apikey
+            # print('i=' + str(i) + ',apikey=' + apikey )
+            try:
+                r = requests.get(movie_url)
+                movie_info_dic = json.loads(r.text)
+                director = movie_info_dic.get('Director', '')
+                actor = movie_info_dic.get('Actors', '')
+                writer = movie_info_dic.get('Writer', '')
+            except:
+                director = ''
+                actor = ''
+                writer = ''
+            director_list.append(director)
+            actor_list.append(actor)
+            writer_list.append(writer)
+
+        movies['director'] = director_list
+        movies['actor'] = actor_list
+        movies['writer'] = writer_list
 
     ratings = []
     with open(join(raw_dir, 'ratings.dat')) as f:

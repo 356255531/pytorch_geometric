@@ -85,7 +85,7 @@ print('train params: {}'.format(train_args))
 
 
 def main():
-    run(KGGCNNet, dataset_args, model_args, train_args)
+    run(model_class, dataset_args, model_args, train_args)
 
 
 if __name__ == '__main__':

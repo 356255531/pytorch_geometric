@@ -4,6 +4,7 @@ import numpy as np
 import random as rd
 import tqdm
 import pickle
+import itertools
 
 
 from torch_geometric.data import InMemoryDataset, download_url
@@ -53,7 +54,7 @@ def convert_2_data(
         iid2raw_iid):
     """
     Entitiy node include (gender, occupation, genres)
-    num_nodes = num_users + num_items + num_genders + num_occupation + num_ages + num_genres + num_year
+    num_nodes = num_users + num_items + num_genders + num_occupation + num_ages + num_genres + num_years + num_directors + num_actors
     """
     num_users = users.shape[0]
     num_items = items.shape[0]
@@ -78,19 +79,39 @@ def convert_2_data(
     years = list(np.unique(items.discretized_year.to_numpy()))
     num_years = len(years)
 
-    # Bulid node id
-    num_nodes = num_users + num_items + num_genders + num_occupations + num_ages + num_genres + num_years
+    directors = items.director.drop_duplicates().values
+    num_directors = len(directors)
 
-    # Build property2id map
+    actors = [actor_str.split(',') for actor_str in items.actor.values]
+    actors = list(set(list(itertools.chain.from_iterable(actors))))
+    num_actors = len(actors)
+
+    # Bulid node id
+    num_nodes = num_users + num_items + num_genders + num_occupations + num_ages + num_genres + num_years + num_directors + num_actors
+
+    # Add node id features to users and items
     users['nid'] = users['uid']
     items['nid'] = items['iid'] + num_users
-    user_node_id_map = {uid: i for i, uid in enumerate(users['uid'].values)}
-    item_node_id_map = {iid: num_users + i for i, iid in enumerate(items['iid'].values)}
-    gender_node_id_map = {gender: num_users + num_items + i for i, gender in enumerate(genders)}
-    occupation_node_id_map = {occupation: num_users + num_items + num_genders + i for i, occupation in enumerate(occupations)}
-    age_node_id_map = {genre: num_users + num_items + num_genders + num_occupations + i for i, genre in enumerate(ages)}
-    genre_node_id_map = {genre: num_users + num_items + num_genders + num_occupations + num_ages + i for i, genre in enumerate(genres)}
-    year_node_id_map = {year: num_users + num_items + num_genders + num_occupations + num_ages + num_genres + i for i, year in enumerate(years)}
+
+    # Build property2id map
+    acc = 0
+    user_node_id_map = {uid: i + acc for i, uid in enumerate(users['uid'].values)}
+    acc += users.shape[0]
+    item_node_id_map = {iid: i + acc for i, iid in enumerate(items['iid'].values)}
+    acc += items.shape[0]
+    gender_node_id_map = {gender: i + acc for i, gender in enumerate(genders)}
+    acc += len(genders)
+    occupation_node_id_map = {occupation: i + acc for i, occupation in enumerate(occupations)}
+    acc += len(occupations)
+    age_node_id_map = {genre: i + acc for i, genre in enumerate(ages)}
+    acc += len(ages)
+    genre_node_id_map = {genre: i + acc for i, genre in enumerate(genres)}
+    acc += len(genres)
+    year_node_id_map = {year: i + acc for i, year in enumerate(years)}
+    acc += len(years)
+    director_node_id_map = {director: i + acc for i, director in enumerate(directors)}
+    acc += len(directors)
+    actor_node_id_map = {actor: i + acc for i, actor in enumerate(actors)}
 
     # Start creating edges
     row_idx, col_idx = [], []
@@ -125,6 +146,8 @@ def convert_2_data(
     for _, row in tqdm.tqdm(items.iterrows(), total=items.shape[0]):
         i_nid = item_node_id_map[row['iid']]
         y_nid = year_node_id_map[row['discretized_year']]
+        d_nid = director_node_id_map[row['director']]
+        a_nid = director_node_id_map[row['director']]
         row_idx.append(i_nid)
         col_idx.append(y_nid)
         edge_attrs.append([relations.index('year'), -1])
@@ -145,6 +168,8 @@ def convert_2_data(
     edge_attrs += [[relations.index('interact'), i] for i in list(ratings['rating'])]
 
     print('Building masks...')
+    import pdb
+    pdb.set_trace()
     rating_mask = torch.ones(ratings.shape[0], dtype=torch.bool)
     rating_edge_mask = torch.cat(
         (
@@ -273,7 +298,7 @@ def restore(path):
 
 class MovieLens(InMemoryDataset):
     url = 'http://files.grouplens.org/datasets/movielens/'
-    # aux_url = 'https://github.com/lizhedm/MADemo/blob/master/app/ml-1m/movies.dat'
+    aux_url = 'https://github.com/lizhedm/MATDeme/blob/master/app/new_movies.dat'
 
     def __init__(self,
                  root,
@@ -312,7 +337,7 @@ class MovieLens(InMemoryDataset):
         path = download_url(self.url + self.raw_file_names, self.raw_dir)
 
         extract_zip(path, self.raw_dir)
-        # download_url(self.aux_url, join(self.raw_dir, self.raw_file_names.split('.')[0]))
+        download_url(self.aux_url, join(self.raw_dir, self.raw_file_names.split('.')[0]))
 
     def process(self):
         unzip_raw_dir = join(self.raw_dir, 'ml-{}'.format(self.name))
@@ -352,6 +377,26 @@ class MovieLens(InMemoryDataset):
         # drop users and movies which do not exist in ratings
         users = users[users.uid.isin(ratings['uid'])]
         items = items[items.iid.isin(ratings['iid'])]
+
+        # Drop the unfrequent writer, actor and directors
+        writers = items.writer.values
+        writers_dict = dict(itertools.zip_longest(*[iter(writers)] * 2, fillvalue=""))
+        unique_writers = {k: v for k, v in writers_dict.items if v > self.num_core}.keys()
+        writers = [writer if writer in unique_writers else '' for writer in writers]
+        directors = items.director.values
+        directors_dict = dict(itertools.zip_longest(*[iter(directors)] * 2, fillvalue=""))
+        unique_directors = {k: v for k, v in directors_dict.items if v > self.num_core}.keys()
+        directors = [director if director in unique_directors else '' for director in directors]
+        actor_strs = [actor_str for actor_str in items.actor.values]
+        actors = [actor_str.split(', ') for actor_str in actor_strs]
+        actors = list(itertools.chain.from_iterable(actors))
+        actors_dict = dict(itertools.zip_longest(*[iter(actors)] * 2, fillvalue=""))
+        unique_actors = {k: v for k, v in actors_dict.items if v > self.num_core}.keys()
+        actor_strs = [[single_actor_str for single_actor_str in actor_str.split(', ') if single_actor_str in unique_actors] for actor_str in actor_strs]
+        actor_strs = [actor_str.join(', ') for actor_str in actor_strs]
+        items['writer'] = writers
+        items['director'] = directors
+        items['actor'] = actor_strs
 
         users, items, ratings, iid2raw_iid = reindex_df(users, items, ratings)
 

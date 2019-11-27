@@ -27,10 +27,20 @@ class Net(torch.nn.Module):
         """
         raise NotImplementedError('interaction edge check function not defined!')
 
-    def predict(self, train_edge_index, train_interact_edge_index, train_interact_edge_attr, *args):
+    def ex_predict(self, train_edge_index, train_interact_edge_index, train_interact_edge_attr, *args):
         self.check_interact_edge(train_interact_edge_attr)
         x = self(train_edge_index, *args)
 
+        head = self.proj_node(x[train_interact_edge_index[:1, :].t()], train_interact_edge_attr)
+        tail = self.proj_node(x[train_interact_edge_index[1:2, :].t()], train_interact_edge_attr)
+
+        est_feedback = torch.sum(head * tail, dim=-1).reshape(-1, 1)
+        return est_feedback
+
+    def im_predict(self, train_edge_index, train_tripples, *args):
+        x = self(train_edge_index, *args)
+
+        user_emb = self.proj_node(x[train_interact_edge_index[:1, :].t()], train_interact_edge_attr)
         head = self.proj_node(x[train_interact_edge_index[:1, :].t()], train_interact_edge_attr)
         tail = self.proj_node(x[train_interact_edge_index[1:2, :].t()], train_interact_edge_attr)
 
