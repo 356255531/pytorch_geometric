@@ -51,6 +51,27 @@ def read_ml(raw_dir, debug=None):
             })
     users = pd.DataFrame(users)
 
+    # movies = []
+    # # read movies
+    # with open(join(raw_dir, 'movies.dat'), encoding='latin1') as f:
+    #     for line in f:
+    #         id_, title, genres = line.strip().split('::')
+    #         genres_set = set(genres.split('|'))
+    #
+    #         # extract year
+    #         assert re.match(r'.*\([0-9]{4}\)$', title)
+    #         year = title[-5:-1]
+    #         title = title[:-6].strip()
+    #
+    #         data = {'iid': int(id_), 'title': title, 'year': int(year)}
+    #         for g in genres_set:
+    #             data[g] = True
+    #         movies.append(data)
+    # movies = (
+    #     pd.DataFrame(movies)
+    #         .fillna(False)
+    #         .astype({'year': 'category'}))
+
     try:
         movies = pd.read_csv(join(raw_dir, 'new_movies.dat'))
     except:
@@ -100,8 +121,9 @@ def read_ml(raw_dir, debug=None):
             movie_url = "http://www.omdbapi.com/?" + "t=" + title + "&y=" + str(year) + "&apikey=" + apikey
             # print('i=' + str(i) + ',apikey=' + apikey )
             try:
-                r = requests.get(movie_url)
-                movie_info_dic = json.loads(r.text)
+                # r = requests.get(movie_url)
+                movie_info_dic = {'Director': '', 'Actors': '', 'Writer': ''}
+                # movie_info_dic = json.loads(r.text)
                 director = movie_info_dic.get('Director', '')
                 actor = movie_info_dic.get('Actors', '')
                 writer = movie_info_dic.get('Writer', '')

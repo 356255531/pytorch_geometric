@@ -5,7 +5,7 @@ import random as rd
 import tqdm
 import pickle
 import itertools
-
+from collections import Counter
 
 from torch_geometric.data import InMemoryDataset, download_url
 from torch_geometric.io import read_ml
@@ -45,13 +45,13 @@ def reindex_df(users, items, interactions):
     interactions.loc[:, 'uid'] = rating_uids
     interactions.loc[:, 'iid'] = rating_iids
 
-    return users, items, interactions, iid2raw_iid
+    return users, items, interactions, iid2raw_iid, raw_iid2iid
 
 
 def convert_2_data(
         users, items, ratings,
         train_ratio, sec_order,
-        iid2raw_iid):
+        iid2raw_iid, raw_iid2iid):
     """
     Entitiy node include (gender, occupation, genres)
     num_nodes = num_users + num_items + num_genders + num_occupation + num_ages + num_genres + num_years + num_directors + num_actors
@@ -263,7 +263,7 @@ def convert_2_data(
         'user_node_id_map': user_node_id_map, 'gender_node_id_map': gender_node_id_map,
         'occupation_node_id_map': occupation_node_id_map, 'age_node_id_map': age_node_id_map,
         'genre_node_id_map': genre_node_id_map, 'year_node_id_map': year_node_id_map,
-        'iid2raw_iid': iid2raw_iid
+        'iid2raw_iid': iid2raw_iid, 'raw_iid2iid': raw_iid2iid
     }
 
     if train_ratio is not None:
@@ -380,27 +380,27 @@ class MovieLens(InMemoryDataset):
 
         # Drop the unfrequent writer, actor and directors
         writers = items.writer.values
-        writers_dict = dict(itertools.zip_longest(*[iter(writers)] * 2, fillvalue=""))
-        unique_writers = {k: v for k, v in writers_dict.items if v > self.num_core}.keys()
+        writers_dict = Counter(writers)
+        unique_writers = {k: v for k, v in writers_dict.items() if v > self.num_core}.keys()
         writers = [writer if writer in unique_writers else '' for writer in writers]
         directors = items.director.values
-        directors_dict = dict(itertools.zip_longest(*[iter(directors)] * 2, fillvalue=""))
-        unique_directors = {k: v for k, v in directors_dict.items if v > self.num_core}.keys()
+        directors_dict = Counter(directors)
+        unique_directors = {k: v for k, v in directors_dict.items() if v > self.num_core}.keys()
         directors = [director if director in unique_directors else '' for director in directors]
         actor_strs = [actor_str for actor_str in items.actor.values]
         actors = [actor_str.split(', ') for actor_str in actor_strs]
         actors = list(itertools.chain.from_iterable(actors))
-        actors_dict = dict(itertools.zip_longest(*[iter(actors)] * 2, fillvalue=""))
-        unique_actors = {k: v for k, v in actors_dict.items if v > self.num_core}.keys()
+        actors_dict = Counter(actors)
+        unique_actors = {k: v for k, v in actors_dict.items() if v > self.num_core}.keys()
         actor_strs = [[single_actor_str for single_actor_str in actor_str.split(', ') if single_actor_str in unique_actors] for actor_str in actor_strs]
-        actor_strs = [actor_str.join(', ') for actor_str in actor_strs]
+        actor_strs = [', '.join(actor_str) for actor_str in actor_strs]
         items['writer'] = writers
         items['director'] = directors
         items['actor'] = actor_strs
 
-        users, items, ratings, iid2raw_iid = reindex_df(users, items, ratings)
+        users, items, ratings, iid2raw_iid, raw_iid2iid = reindex_df(users, items, ratings)
 
-        data = convert_2_data(users, items, ratings, self.train_ratio, self.sec_order, iid2raw_iid)
+        data = convert_2_data(users, items, ratings, self.train_ratio, self.sec_order, iid2raw_iid, raw_iid2iid)
 
         torch.save(self.collate([data]), self.processed_paths[0], pickle_protocol=4)
 
