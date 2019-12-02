@@ -4,7 +4,6 @@ from os.path import isfile
 import numpy as np
 import random as rd
 import tqdm
-import pandas as pd
 import itertools
 from collections import Counter
 
@@ -57,7 +56,7 @@ def convert_2_data(
         train_ratio, sec_order):
     """
     Entitiy node include (gender, occupation, genres)
-    num_nodes = num_users + num_items + num_genders + num_occupation + num_ages + num_genres + num_years + num_directors + num_actors
+    num_nodes = num_users + num_items + num_genders + num_occupation + num_ages + num_genres + num_years + num_directors + num_actors + num_writers
     """
     num_users = users.shape[0]
     num_items = items.shape[0]
