@@ -28,7 +28,7 @@ class InMemoryDataset(Dataset):
     """
     @property
     def raw_file_names(self):
-        r"""The name of the files to find in the :obj:`self.raw_dir` folder in
+        r"""The name of the files to find in the :obj:`self.dir` folder in
         order to skip the download."""
         raise NotImplementedError
 
@@ -39,7 +39,7 @@ class InMemoryDataset(Dataset):
         raise NotImplementedError
 
     def download(self):
-        r"""Downloads the dataset to the :obj:`self.raw_dir` folder."""
+        r"""Downloads the dataset to the :obj:`self.dir` folder."""
         raise NotImplementedError
 
     def process(self):

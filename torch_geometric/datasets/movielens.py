@@ -1,9 +1,10 @@
 import torch
 from os.path import join
+from os.path import isfile
 import numpy as np
 import random as rd
 import tqdm
-import pickle
+import pandas as pd
 import itertools
 from collections import Counter
 
@@ -11,6 +12,10 @@ from torch_geometric.data import InMemoryDataset, download_url
 from torch_geometric.io import read_ml
 from torch_geometric.data import Data, extract_zip
 from torch_geometric.utils import get_sec_order_edge
+
+
+def save_df(df, path):
+    df.to_csv(path, encoding='utf-8')
 
 
 def reindex_df(users, items, interactions):
@@ -34,7 +39,6 @@ def reindex_df(users, items, interactions):
 
     raw_uid2uid = {raw_uid: uid for raw_uid, uid in zip(raw_uids, uids)}
     raw_iid2iid = {raw_iid: iid for raw_iid, iid in zip(raw_iids, iids)}
-    iid2raw_iid = {iid: raw_iid  for raw_iid, iid in zip(raw_iids, iids)}
 
     rating_uids = np.array(interactions.uid, dtype=np.int)
     rating_iids = np.array(interactions.iid, dtype=np.int)
@@ -45,13 +49,12 @@ def reindex_df(users, items, interactions):
     interactions.loc[:, 'uid'] = rating_uids
     interactions.loc[:, 'iid'] = rating_iids
 
-    return users, items, interactions, iid2raw_iid, raw_iid2iid
+    return users, items, interactions
 
 
 def convert_2_data(
         users, items, ratings,
-        train_ratio, sec_order,
-        iid2raw_iid, raw_iid2iid):
+        train_ratio, sec_order):
     """
     Entitiy node include (gender, occupation, genres)
     num_nodes = num_users + num_items + num_genders + num_occupation + num_ages + num_genres + num_years + num_directors + num_actors
@@ -60,8 +63,8 @@ def convert_2_data(
     num_items = items.shape[0]
 
     relations = [
-        'gender', 'occupation', 'age', 'genre', 'year', 'interact',
-        '-gender', '-occupation', '-age', '-genre', '-year', '-interact'
+        'gender', 'occupation', 'age', 'genre', 'year', 'director', 'actor', 'writer', 'interact',
+        '-gender', '-occupation', '-age', '-genre', '-year', '-director', '-actor', '-writer', '-interact'
     ]
 
     genders = ['M', 'F']
@@ -70,7 +73,7 @@ def convert_2_data(
     occupations = list(users.occupation.unique())
     num_occupations = len(occupations)
 
-    ages = ['1', '18', '25', '35', '45', '50', '56']
+    ages = list(users.age.unique())
     num_ages = len(ages)
 
     genres = list(items.keys()[3:21])
@@ -79,15 +82,18 @@ def convert_2_data(
     years = list(np.unique(items.discretized_year.to_numpy()))
     num_years = len(years)
 
-    directors = items.director.drop_duplicates().values
+    directors = list(items.director.unique())
     num_directors = len(directors)
 
-    actors = [actor_str.split(',') for actor_str in items.actor.values]
-    actors = list(set(list(itertools.chain.from_iterable(actors))))
+    actors = [actor_str.split(', ') for actor_str in items.actor.values]
+    actors = list(set(itertools.chain.from_iterable(actors)))
+    actors = [actor for actor in actors if actor != '']
     num_actors = len(actors)
 
+    writers = list(items.writer.unique())
+    num_writers = len(writers)
     # Bulid node id
-    num_nodes = num_users + num_items + num_genders + num_occupations + num_ages + num_genres + num_years + num_directors + num_actors
+    num_nodes = num_users + num_items + num_genders + num_occupations + num_ages + num_genres + num_years + num_directors + num_actors + num_writers
 
     # Add node id features to users and items
     users['nid'] = users['uid']
@@ -100,18 +106,20 @@ def convert_2_data(
     item_node_id_map = {iid: i + acc for i, iid in enumerate(items['iid'].values)}
     acc += items.shape[0]
     gender_node_id_map = {gender: i + acc for i, gender in enumerate(genders)}
-    acc += len(genders)
+    acc += num_genders
     occupation_node_id_map = {occupation: i + acc for i, occupation in enumerate(occupations)}
-    acc += len(occupations)
-    age_node_id_map = {genre: i + acc for i, genre in enumerate(ages)}
-    acc += len(ages)
+    acc += num_occupations
+    age_node_id_map = {age: i + acc for i, age in enumerate(ages)}
+    acc += num_ages
     genre_node_id_map = {genre: i + acc for i, genre in enumerate(genres)}
-    acc += len(genres)
+    acc += num_genres
     year_node_id_map = {year: i + acc for i, year in enumerate(years)}
-    acc += len(years)
+    acc += num_years
     director_node_id_map = {director: i + acc for i, director in enumerate(directors)}
-    acc += len(directors)
+    acc += num_directors
     actor_node_id_map = {actor: i + acc for i, actor in enumerate(actors)}
+    acc += num_actors
+    writer_node_id_map = {writer: i + acc for i, writer in enumerate(writers)}
 
     # Start creating edges
     row_idx, col_idx = [], []
@@ -121,7 +129,7 @@ def convert_2_data(
 
     print('Creating user property edges...')
     for _, row in tqdm.tqdm(users.iterrows(), total=users.shape[0]):
-        u_nid = row['uid']
+        u_nid = row['nid']
         gender = row['gender']
         occupation = row['occupation']
         age = row['age']
@@ -144,13 +152,38 @@ def convert_2_data(
 
     print('Creating item property edges...')
     for _, row in tqdm.tqdm(items.iterrows(), total=items.shape[0]):
-        i_nid = item_node_id_map[row['iid']]
-        y_nid = year_node_id_map[row['discretized_year']]
-        d_nid = director_node_id_map[row['director']]
-        a_nid = director_node_id_map[row['director']]
+        i_nid = row['nid']
+        year = row['discretized_year']
+        director = row['director']
+        actors = row['actor'].split(', ')
+        writer = row['writer']
+
+        y_nid = year_node_id_map[year]
         row_idx.append(i_nid)
         col_idx.append(y_nid)
         edge_attrs.append([relations.index('year'), -1])
+
+        if director != '':
+            d_nid = director_node_id_map[director]
+            row_idx.append(i_nid)
+            col_idx.append(d_nid)
+            edge_attrs.append([relations.index('director'), -1])
+            rating_begin += 1
+
+        for actor in actors:
+            if actor != '':
+                a_nid = actor_node_id_map[actor]
+                row_idx.append(i_nid)
+                col_idx.append(a_nid)
+                edge_attrs.append([relations.index('actor'), -1])
+                rating_begin += 1
+
+        if writer != '':
+            w_nid = writer_node_id_map[writer]
+            row_idx.append(i_nid)
+            col_idx.append(w_nid)
+            edge_attrs.append([relations.index('writer'), -1])
+            rating_begin += 1
 
         for genre in genres:
             if not row[genre]:
@@ -168,8 +201,6 @@ def convert_2_data(
     edge_attrs += [[relations.index('interact'), i] for i in list(ratings['rating'])]
 
     print('Building masks...')
-    import pdb
-    pdb.set_trace()
     rating_mask = torch.ones(ratings.shape[0], dtype=torch.bool)
     rating_edge_mask = torch.cat(
         (
@@ -182,7 +213,7 @@ def convert_2_data(
         train_rating_mask = torch.zeros(ratings.shape[0], dtype=torch.bool)
         test_rating_mask = torch.ones(ratings.shape[0], dtype=torch.bool)
         train_rating_idx = rd.sample([i for i in range(ratings.shape[0])], int(ratings.shape[0] * train_ratio))
-        test_rating_idx = [i for i in range(ratings.shape[0]) if i not in train_rating_idx]
+        test_rating_idx = list(set(range(ratings.shape[0])) - set(train_rating_idx))
         train_rating_mask[train_rating_idx] = 1
         test_rating_mask[train_rating_idx] = 0
 
@@ -226,11 +257,36 @@ def convert_2_data(
 
     print('Creating reverse item property edges...')
     for _, row in tqdm.tqdm(items.iterrows(), total=items.shape[0]):
-        i_nid = item_node_id_map[row['iid']]
-        y_nid = year_node_id_map[row['discretized_year']]
+        i_nid = row['nid']
+        year = row['discretized_year']
+        director = row['director']
+        actors = row['actor'].split(', ')
+        writer = row['writer']
+
+        y_nid = year_node_id_map[year]
         col_idx.append(i_nid)
         row_idx.append(y_nid)
         edge_attrs.append([relations.index('-year'), -1])
+
+        if director != '':
+            d_nid = director_node_id_map[director]
+            col_idx.append(i_nid)
+            row_idx.append(d_nid)
+            edge_attrs.append([relations.index('-director'), -1])
+
+        for actor in actors:
+            if actor != '':
+                a_nid = actor_node_id_map[actor]
+                col_idx.append(i_nid)
+                row_idx.append(a_nid)
+                edge_attrs.append([relations.index('-actor'), -1])
+
+        if writer != '':
+            w_nid = writer_node_id_map[writer]
+            col_idx.append(i_nid)
+            row_idx.append(w_nid)
+            edge_attrs.append([relations.index('-writer'), -1])
+            rating_begin += 1
 
         for genre in genres:
             if not row[genre]:
@@ -263,7 +319,8 @@ def convert_2_data(
         'user_node_id_map': user_node_id_map, 'gender_node_id_map': gender_node_id_map,
         'occupation_node_id_map': occupation_node_id_map, 'age_node_id_map': age_node_id_map,
         'genre_node_id_map': genre_node_id_map, 'year_node_id_map': year_node_id_map,
-        'iid2raw_iid': iid2raw_iid, 'raw_iid2iid': raw_iid2iid
+        'actor_node_id_map': actor_node_id_map, 'director_node_id_map': director_node_id_map,
+        'writer_node_id_map': writer_node_id_map
     }
 
     if train_ratio is not None:
@@ -285,20 +342,8 @@ def convert_2_data(
     return Data(**kwargs)
 
 
-def save(obj, path):
-    with open(path, 'wb') as f:
-        pickle.dump(obj, f)
-
-
-def restore(path):
-    with open(path, 'rb') as f:
-        obj = pickle.load(f)
-    return obj
-
-
 class MovieLens(InMemoryDataset):
     url = 'http://files.grouplens.org/datasets/movielens/'
-    aux_url = 'https://github.com/lizhedm/MATDeme/blob/master/app/new_movies.dat'
 
     def __init__(self,
                  root,
@@ -335,72 +380,81 @@ class MovieLens(InMemoryDataset):
 
     def download(self):
         path = download_url(self.url + self.raw_file_names, self.raw_dir)
-
         extract_zip(path, self.raw_dir)
-        download_url(self.aux_url, join(self.raw_dir, self.raw_file_names.split('.')[0]))
 
     def process(self):
         unzip_raw_dir = join(self.raw_dir, 'ml-{}'.format(self.name))
 
         # read files
-        users, items, ratings = read_ml(unzip_raw_dir, self.debug)
+        if isfile(join(self.processed_dir, 'movies.pkl')) and isfile(join(self.processed_dir, 'ratings.pkl')) and isfile(join(self.processed_dir, 'users.pkl')):
+            print('Read data frame!')
+            users, items, ratings = read_ml(self.processed_dir, True, self.debug)
+            users = users.fillna('')
+            items = items.fillna('')
+            ratings = ratings.fillna('')
+        else:
+            print('Read from raw data!')
+            users, items, ratings = read_ml(unzip_raw_dir, False, self.debug)
 
-        # Discretized year
-        years = items.year.to_numpy()
-        min_year = min(years)
-        max_year = max(years)
-        num_years = (max_year - min_year) // 10
-        discretized_years = [min_year + i * 10 for i in range(num_years + 1)]
-        for i, year in enumerate(discretized_years):
-            if i == 0:
-                years[years <= year] = year
-            else:
-                years[(years <= year) & (years > year)] = year
-        items['discretized_year'] = years
+            # Discretized year
+            years = items.year.to_numpy()
+            min_year = min(years)
+            max_year = max(years)
+            num_years = (max_year - min_year) // 10
+            discretized_years = [min_year + i * 10 for i in range(num_years + 1)]
+            for i, year in enumerate(discretized_years):
+                if i == 0:
+                    years[years <= year] = year
+                else:
+                    years[(years <= year) & (years > discretized_years[i - 1])] = year
+            items['discretized_year'] = years
 
-        # remove duplications
-        users = users.drop_duplicates()
-        items = items.drop_duplicates()
-        ratings = ratings.drop_duplicates()
+            # remove duplications
+            users = users.drop_duplicates()
+            items = items.drop_duplicates()
+            ratings = ratings.drop_duplicates()
 
-        item_count = ratings['iid'].value_counts()
-        user_count = ratings['uid'].value_counts()
-        item_count.name = 'movie_count'
-        user_count.name = 'user_count'
-        ratings = ratings.join(item_count, on='iid')
-        ratings = ratings.join(user_count, on='uid')
+            item_count = ratings['iid'].value_counts()
+            user_count = ratings['uid'].value_counts()
+            item_count.name = 'movie_count'
+            user_count.name = 'user_count'
+            ratings = ratings.join(item_count, on='iid')
+            ratings = ratings.join(user_count, on='uid')
 
-        # delete ratings have movie and user count less than self.num_core
-        ratings = ratings[ratings.movie_count > self.num_core]
-        ratings = ratings[ratings.user_count > self.num_core]
+            # delete ratings have movie and user count less than self.num_core
+            ratings = ratings[ratings.movie_count > self.num_core]
+            ratings = ratings[ratings.user_count > self.num_core]
 
-        # drop users and movies which do not exist in ratings
-        users = users[users.uid.isin(ratings['uid'])]
-        items = items[items.iid.isin(ratings['iid'])]
+            # drop users and movies which do not exist in ratings
+            users = users[users.uid.isin(ratings['uid'])]
+            items = items[items.iid.isin(ratings['iid'])]
 
-        # Drop the unfrequent writer, actor and directors
-        writers = items.writer.values
-        writers_dict = Counter(writers)
-        unique_writers = {k: v for k, v in writers_dict.items() if v > self.num_core}.keys()
-        writers = [writer if writer in unique_writers else '' for writer in writers]
-        directors = items.director.values
-        directors_dict = Counter(directors)
-        unique_directors = {k: v for k, v in directors_dict.items() if v > self.num_core}.keys()
-        directors = [director if director in unique_directors else '' for director in directors]
-        actor_strs = [actor_str for actor_str in items.actor.values]
-        actors = [actor_str.split(', ') for actor_str in actor_strs]
-        actors = list(itertools.chain.from_iterable(actors))
-        actors_dict = Counter(actors)
-        unique_actors = {k: v for k, v in actors_dict.items() if v > self.num_core}.keys()
-        actor_strs = [[single_actor_str for single_actor_str in actor_str.split(', ') if single_actor_str in unique_actors] for actor_str in actor_strs]
-        actor_strs = [', '.join(actor_str) for actor_str in actor_strs]
-        items['writer'] = writers
-        items['director'] = directors
-        items['actor'] = actor_strs
+            # Drop the unfrequent writer, actor and directors
+            writers = items.writer.values
+            writers_dict = Counter(writers)
+            unique_writers = {k: v for k, v in writers_dict.items() if v > self.num_core}.keys()
+            writers = [writer if writer in unique_writers else '' for writer in writers]
+            directors = items.director.values
+            directors_dict = Counter(directors)
+            unique_directors = {k: v for k, v in directors_dict.items() if v > self.num_core}.keys()
+            directors = [director if director in unique_directors else '' for director in directors]
+            actor_strs = [actor_str for actor_str in items.actor.values]
+            actors = [actor_str.split(', ') for actor_str in actor_strs]
+            actors = list(itertools.chain.from_iterable(actors))
+            actors_dict = Counter(actors)
+            unique_actors = {k: v for k, v in actors_dict.items() if v > self.num_core}.keys()
+            actor_strs = [[single_actor_str for single_actor_str in actor_str.split(', ') if single_actor_str in unique_actors] for actor_str in actor_strs]
+            actor_strs = [', '.join(actor_str) for actor_str in actor_strs]
+            items['writer'] = writers
+            items['director'] = directors
+            items['actor'] = actor_strs
 
-        users, items, ratings, iid2raw_iid, raw_iid2iid = reindex_df(users, items, ratings)
+            users, items, ratings = reindex_df(users, items, ratings)
+            save_df(users, join(self.processed_dir, 'users.pkl'))
+            save_df(items, join(self.processed_dir, 'movies.pkl'))
+            save_df(ratings, join(self.processed_dir, 'ratings.pkl'))
 
-        data = convert_2_data(users, items, ratings, self.train_ratio, self.sec_order, iid2raw_iid, raw_iid2iid)
+        data = convert_2_data(users, items, ratings, self.train_ratio, self.sec_order)
 
         torch.save(self.collate([data]), self.processed_paths[0], pickle_protocol=4)
 
