@@ -6,6 +6,8 @@ from train_eval import run
 from models import KGGCNNet, GCNNet
 
 MODEL = 'GCN'
+KG_EX_MODEL = KGGCNNet
+EX_MODEL = GCNNet
 IMPLICIT = True
 SEC_ORDER = False
 
@@ -18,18 +20,24 @@ parser.add_argument("--dataset_name", type=str, default='1m', help="")
 parser.add_argument("--num_core", type=int, default=10, help="")
 parser.add_argument("--train_ratio", type=float, default=0.8, help="")
 parser.add_argument("--debug", default=0.01, help="")
+# parser.add_argument("--debug", default=False, help="")
 
 # Model params
 parser.add_argument("--hidden_size", type=int, default=128, help="")
 parser.add_argument("--emb_dim", type=int, default=64, help="")
 parser.add_argument("--repr_dim", type=int, default=64, help="")
-parser.add_argument("--pretrain", type=bool, default=False, help="")
-parser.add_argument("--node_projection", type=bool, default=False, help="")
+parser.add_argument("--pretrain", default=False, help="")
+# parser.add_argument("--pretrain", default='trans_e', help="")
+# parser.add_argument("--pretrain", default='trans_h', help="")
+# parser.add_argument("--pretrain", default='trans_r', help="")
+parser.add_argument("--node_projection", default=False, help="")
+# parser.add_argument("--node_projection", default='trans_e', help="")
+# parser.add_argument("--node_projection", default='trans_h', help="")
+# parser.add_argument("--node_projection", default='trans_r', help="")
 
 # Train params
 parser.add_argument("--device", type=str, default='cuda', help="")
-parser.add_argument("--gpu_idx", type=str, default='0', help="")
-parser.add_argument("--beta", type=float, default=0.5, help="")
+parser.add_argument("--gpu_idx", type=str, default='1', help="")
 parser.add_argument("--runs", type=int, default=10, help="")
 parser.add_argument("--pretrain_epochs", type=int, default=10, help="")
 parser.add_argument("--epochs", type=int, default=50, help="")
@@ -41,15 +49,17 @@ parser.add_argument("--kg_batch_size", type=int, default=1028, help="")
 parser.add_argument("--cf_batch_size", type=int, default=1028, help="")
 parser.add_argument("--lr", type=float, default=1e-4, help="")
 parser.add_argument("--weight_decay", type=float, default=0, help="")
-parser.add_argument("--early_stopping", type=int, default=40, help="")
+parser.add_argument("--early_stopping", default=40, help="")
+# parser.add_argument("--early_stopping", default=None, help="")
 
 args = parser.parse_args()
 
 ########################################### Initialization ###########################################
 # Setup data and weights file path
-dataset = '{}_core{}_{}_ratio{}'.format(args.dataset + args.dataset_name, args.num_core, 'implicit' if IMPLICIT else 'explicit', args.train_ratio)
-dataset = dataset + '_secorder' if SEC_ORDER else dataset
-dataset = dataset + '_debug{}'.format(args.debug) if args.debug else dataset
+dataset = '{}_core{}_{}'.format(args.dataset + args.dataset_name, args.num_core, 'implicit' if IMPLICIT else 'explicit')
+dataset += '_secorder' if SEC_ORDER else ''
+dataset += '_ratio{}'.format(args.train_ratio) if args.train_ratio else ''
+dataset += '_debug{}'.format(args.debug) if args.debug else ''
 data_folder, weights_folder, logger_folder = get_folder_path(MODEL, dataset)
 
 # Setup the torch device
@@ -64,7 +74,7 @@ dataset_args = {
     'num_core': args.num_core, 'sec_order': SEC_ORDER, 'train_ratio': args.train_ratio,
     'implicit': IMPLICIT, 'debug': args.debug,
 }
-model_class = KGGCNNet if args.pretrain else GCNNet
+model_class = KG_EX_MODEL if args.pretrain else EX_MODEL
 node_projection = args.node_projection & args.pretrain
 model_args = {
     'hidden_size': args.hidden_size, 'emb_dim': args.emb_dim,

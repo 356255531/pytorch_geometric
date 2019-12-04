@@ -17,16 +17,21 @@ def train_im_cf_single_epoch(epoch, model, train_rating_edge_iter, train_edge_in
     losses = []
     pbar = tqdm.tqdm(train_rating_edge_iter, total=len(train_rating_edge_iter))
     for batch in pbar:
-        batch_edge_index_t, batch_edge_attr = batch
+        u_nids, pos_i_nids, neg_i_nids = batch[0].t()
         x = model(train_edge_index)
-        rating = batch_edge_attr[:, 1:2].float().detach() / 5
-        loss_t = loss_func(est_rating, rating)
+        u_emb = x[u_nids]
+        pos_i_emb = x[pos_i_nids]
+        neg_i_emb = x[neg_i_nids]
+
+        pos_dist = torch.sum(u_emb * pos_i_emb, dim=-1)
+        neg_dist = torch.sum(u_emb * neg_i_emb, dim=-1)
+        loss_t = loss_func(pos_dist, torch.zeros(pos_dist.shape)) - loss_func(neg_dist, torch.zeros(neg_dist.shape))
 
         opt.zero_grad()
         loss_t.backward()
         opt.step()
 
-        losses.append(np.sqrt(float(loss_t.detach()) * 25))
+        losses.append(float(loss_t.detach()))
         loss = np.mean(losses)
         pbar.set_description('Epoch: {}, Train CF loss: {:.3f}'.format(epoch, loss))
     return loss
@@ -56,6 +61,30 @@ def train_cf_single_epoch(epoch, model, train_rating_edge_iter, train_edge_index
     return loss
 
 
+def val_im_cf_single_epoch(epoch, model, test_rating_edge_iter, train_edge_index, train_args):
+    loss_func = get_loss_func(train_args['cf_loss'])
+
+    model.training = False
+    loss = float('inf')
+    losses = []
+    pbar = tqdm.tqdm(test_rating_edge_iter, total=len(test_rating_edge_iter))
+    for batch in pbar:
+        u_nids, pos_i_nids, neg_i_nids = batch[0].t()
+        x = model(train_edge_index)
+        u_emb = x[u_nids]
+        pos_i_emb = x[pos_i_nids]
+        neg_i_emb = x[neg_i_nids]
+
+        pos_dist = torch.sum(u_emb * pos_i_emb, dim=-1)
+        neg_dist = torch.sum(u_emb * neg_i_emb, dim=-1)
+        loss_t = loss_func(pos_dist, torch.zeros(pos_dist.shape)) - loss_func(neg_dist, torch.zeros(neg_dist.shape))
+
+        losses.append(float(loss_t.detach()))
+        loss = np.mean(losses)
+        pbar.set_description('Epoch: {}, Val CF loss: {:.3f}'.format(epoch, loss))
+    return loss
+
+
 def val_cf_single_epoch(epoch, model, test_rating_edge_iter, train_edge_index, train_args):
     loss_func = get_loss_func(train_args['cf_loss'])
 
@@ -73,6 +102,7 @@ def val_cf_single_epoch(epoch, model, test_rating_edge_iter, train_edge_index, t
         loss = np.mean(losses)
         pbar.set_description('Epoch: {}, Val CF loss: {:.3f}'.format(epoch, loss))
     return loss
+
 
 
 def train_sec_order_cf_single_epoch(

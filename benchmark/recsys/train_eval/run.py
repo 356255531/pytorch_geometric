@@ -9,28 +9,26 @@ import torch
 from torch import tensor
 from torch.utils.tensorboard import SummaryWriter
 
-from .train_eval_cf import train_cf_single_epoch, val_cf_single_epoch, \
+from .train_eval_cf import train_im_cf_single_epoch, \
+    train_cf_single_epoch, val_cf_single_epoch, val_im_cf_single_epoch,\
     train_sec_order_cf_single_epoch, val_sec_order_cf_single_epoch
 from .train_eval_kg import train_kg_single_epoch, val_kg_single_epoch
 from .utils import get_dataset, get_explicit_iters, get_implicit_iters
 
 from torch_geometric.data.makedirs import cleardir, makedirs
-from torch_geometric.datasets import MovieLens
 
 
 def run(model_class, dataset_args, model_args, train_args):
     # Create new checkpoin folders and clear it
-    model = 'hs{}_embdim{}_repr_dim{}'.format(
-        model_args['hidden_size'],
-        model_args['emb_dim'], model_args['repr_dim'])
+    model = 'hs{}_emb{}_repr{}'.format(model_args['hidden_size'], model_args['emb_dim'], model_args['repr_dim'])
+    model += '_pretrain{}'.format(model_args['pretrain']) if model_args['pretrain'] else ''
+    model += '_nodeproj{}'.format(model_args['node_projection']) if model_args['pretrain'] else ''
     if train_args['model'] == 'GAT' or train_args['model'] == 'PGAT':
         model += '_heads{}'.format(model_args['heads'])
     model += '_pretrain{}'.format(model_args['pretrain'])
 
-    logger_path = osp.join(train_args['logger_folder'], model)
-    weights_path = osp.join(train_args['weights_folder'], model)
-    train_args['logger_path'] = logger_path
-    train_args['weights_path'] = weights_path
+    train_args['logger_path'] = osp.join(train_args['logger_folder'], model)
+    train_args['weights_path'] = osp.join(train_args['weights_folder'], model)
     cleardir(train_args['logger_path'])
     cleardir(train_args['weights_path'])
 
@@ -41,24 +39,24 @@ def run(model_class, dataset_args, model_args, train_args):
     val_cf_losses = []
     for run in range(1, train_args['runs'] + 1):
         if dataset_args['sec_order']:
-            train_statistics = sec_order_single_run(run, model_class, model_args, dataset_args, train_args)
+            raise NotImplementedError
+            # train_statistics = sec_order_single_run(run, model_class, model_args, dataset_args, train_args)
         else:
-            train_statistics = single_run(run, model_class, model_args, dataset_args, train_args)
-        if train_args['pretrain']:
-            single_run_kg_train_loss, single_run_cf_train_loss, single_run_best_kg_val_loss, single_run_best_cf_val_loss = \
-                train_statistics
-            train_kg_losses.append(single_run_kg_train_loss)
-            val_kg_losses.append(single_run_best_kg_val_loss)
-        else:
-            single_run_cf_train_loss, single_run_best_cf_val_loss = train_statistics
+            if train_args['pretrain']:
+                single_run_kg_train_loss, single_run_cf_train_loss, single_run_kg_val_loss, single_run_cf_val_loss = \
+                    single_run(run, model_class, model_args, dataset_args, train_args)
+                train_kg_losses.append(single_run_kg_train_loss)
+                val_kg_losses.append(single_run_kg_val_loss)
+            else:
+                single_run_cf_train_loss, single_run_cf_val_loss = single_run(run, model_class, model_args, dataset_args, train_args)
         train_cf_loss.append(single_run_cf_train_loss)
-        val_cf_losses.append(single_run_best_cf_val_loss)
+        val_cf_losses.append(single_run_cf_val_loss)
 
     mean_train_cf_loss, best_train_cf_loss = np.mean(train_cf_loss), np.min(train_cf_loss)
     mean_val_cf_loss, best_val_cf_loss = np.mean(val_cf_losses), np.min(val_cf_losses)
     res_dict = {
-                'mean_train_cf_loss': mean_train_cf_loss, 'best_train_cf_loss': best_train_cf_loss,
-                'mean_val_cf_loss': mean_val_cf_loss, 'best_val_cf_loss': best_val_cf_loss
+                'mean_train_cf_loss': best_train_cf_loss, 'best_train_cf_loss': best_train_cf_loss,
+                'mean_val_cf_loss': best_val_cf_loss, 'best_val_cf_loss': best_val_cf_loss
     }
     if train_args['pretrain']:
         mean_train_kg_loss, best_train_kg_loss = np.mean(train_kg_losses), np.min(train_kg_losses)
@@ -85,14 +83,12 @@ def single_run(run, model_class, model_args, dataset_args, train_args):
         trs_edge_iter, trs_train_rating_edge_iter, trs_test_rating_edge_iter = \
             get_implicit_iters(data, train_args)
     else:
-        trs_edge_iter, trs_train_rating_edge_iter, trs_test_rating_edge_iter = \
-            get_explicit_iters(data, train_args)
+        raise NotImplementedError
+        # trs_edge_iter, trs_train_rating_edge_iter, trs_test_rating_edge_iter = \
+        #     get_explicit_iters(data, train_args)
 
     # Init model
-    model = model_class(
-        data.num_nodes[0],
-        data.num_relations[0],
-        **model_args).to(train_args['device'])
+    model = model_class(data.num_nodes[0], data.num_relations[0], **model_args).to(train_args['device'])
     model.reset_parameters()
 
     # Init logger
@@ -112,14 +108,25 @@ def single_run(run, model_class, model_args, dataset_args, train_args):
             kg_train_losses.append(kg_train_loss)
             kg_val_losses.append(kg_val_loss)
     for epoch in range(1, train_args['epochs'] + 1):
-        cf_train_loss = train_cf_single_epoch(
-            epoch, model,
-            trs_train_rating_edge_iter, data.edge_index[:, data.train_edge_mask],
-            train_args)
-        cf_val_loss = val_cf_single_epoch(
-            epoch, model,
-            trs_test_rating_edge_iter, data.edge_index[:, data.train_edge_mask],
-            train_args)
+        if dataset_args['implicit']:
+            cf_train_loss = train_im_cf_single_epoch(
+                epoch, model,
+                trs_train_rating_edge_iter, data.edge_index[:, data.train_edge_mask],
+                train_args)
+            cf_val_loss = val_im_cf_single_epoch(
+                epoch, model,
+                trs_test_rating_edge_iter, data.edge_index[:, data.train_edge_mask],
+                train_args)
+        else:
+            raise NotImplementedError
+            # cf_train_loss = train_cf_single_epoch(
+            #     epoch, model,
+            #     trs_train_rating_edge_iter, data.edge_index[:, data.train_edge_mask],
+            #     train_args)
+            # cf_val_loss = val_cf_single_epoch(
+            #     epoch, model,
+            #     trs_test_rating_edge_iter, data.edge_index[:, data.train_edge_mask],
+            #     train_args)
 
         cf_train_losses.append(cf_train_loss)
         cf_val_losses.append(cf_val_loss)
@@ -145,12 +152,16 @@ def single_run(run, model_class, model_args, dataset_args, train_args):
     torch.save(model.state_dict(), weights_path)
 
     # Pick the best loss of this run
-    cf_train_loss = np.min(cf_train_losses)
-    cf_val_loss = np.min(cf_val_losses)
+    cf_val_min_idx = np.argmin(cf_val_losses)
+
+    cf_train_loss = cf_train_losses[cf_val_min_idx]
+    cf_val_loss = cf_val_losses[cf_val_min_idx]
 
     if train_args['pretrain']:
-        kg_train_loss = np.min(kg_train_losses)
-        kg_val_loss = np.min(kg_val_losses)
+        kg_val_min_idx = np.argmin(kg_train_losses)
+
+        kg_train_loss = kg_train_losses[kg_val_min_idx]
+        kg_val_loss = kg_train_losses[kg_val_min_idx]
         ret = kg_train_loss, cf_train_loss, kg_val_loss, cf_val_loss
     else:
         ret = cf_train_loss, cf_val_loss
