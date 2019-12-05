@@ -294,7 +294,6 @@ def convert_2_data(
             col_idx.append(i_nid)
             row_idx.append(g_nid)
             edge_attrs.append([relations.index('-genre'), -1])
-
     print('Creating reverse rating property edges...')
     col_idx += list(users.iloc[ratings['uid']]['nid'].values)
     row_idx += list(items.iloc[ratings['iid']]['nid'].values)
@@ -387,13 +386,13 @@ class MovieLens(InMemoryDataset):
         # read files
         if isfile(join(self.processed_dir, 'movies.pkl')) and isfile(join(self.processed_dir, 'ratings.pkl')) and isfile(join(self.processed_dir, 'users.pkl')):
             print('Read data frame!')
-            users, items, ratings = read_ml(self.processed_dir, True, self.debug)
+            users, items, ratings = read_ml(self.processed_dir, processed=True)
             users = users.fillna('')
             items = items.fillna('')
             ratings = ratings.fillna('')
         else:
             print('Read from raw data!')
-            users, items, ratings = read_ml(unzip_raw_dir, False, self.debug)
+            users, items, ratings = read_ml(unzip_raw_dir, processed=False)
 
             # Discretized year
             years = items.year.to_numpy()
@@ -452,6 +451,10 @@ class MovieLens(InMemoryDataset):
             save_df(users, join(self.processed_dir, 'users.pkl'))
             save_df(items, join(self.processed_dir, 'movies.pkl'))
             save_df(ratings, join(self.processed_dir, 'ratings.pkl'))
+
+        if self.debug:
+            df_idx = np.random.choice(np.arange(ratings.shape[0]), int(ratings.shape[0] * self.debug))
+            ratings = ratings.iloc[df_idx]
 
         data = convert_2_data(users, items, ratings, self.train_ratio, self.sec_order)
 

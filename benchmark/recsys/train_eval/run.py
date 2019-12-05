@@ -81,7 +81,7 @@ def single_run(run, model_class, model_args, dataset_args, train_args):
     data = get_dataset(dataset_args).data.to(train_args['device'])
     if dataset_args['implicit']:
         trs_edge_iter, trs_train_rating_edge_iter, trs_test_rating_edge_iter = \
-            get_implicit_iters(data, train_args)
+            get_implicit_iters(data, dataset_args, train_args)
     else:
         raise NotImplementedError
         # trs_edge_iter, trs_train_rating_edge_iter, trs_test_rating_edge_iter = \
@@ -99,6 +99,8 @@ def single_run(run, model_class, model_args, dataset_args, train_args):
     # Start training
     cf_train_losses = []
     cf_val_losses = []
+    hrs = []
+    ndcgs = []
     if train_args['pretrain']:
         kg_train_losses = []
         kg_val_losses = []
@@ -113,7 +115,7 @@ def single_run(run, model_class, model_args, dataset_args, train_args):
                 epoch, model,
                 trs_train_rating_edge_iter, data.edge_index[:, data.train_edge_mask],
                 train_args)
-            cf_val_loss = val_im_cf_single_epoch(
+            cf_val_loss, hr, ndcg = val_im_cf_single_epoch(
                 epoch, model,
                 trs_test_rating_edge_iter, data.edge_index[:, data.train_edge_mask],
                 train_args)
@@ -130,17 +132,19 @@ def single_run(run, model_class, model_args, dataset_args, train_args):
 
         cf_train_losses.append(cf_train_loss)
         cf_val_losses.append(cf_val_loss)
+        hrs.append(hr)
+        ndcgs.append(ndcg)
 
         # Log the training history
-        eval_info = {'cf_train_loss': cf_train_loss, 'cf_val_loss': cf_val_loss}
+        eval_info = {'cf_train_loss': cf_train_loss, 'cf_val_loss': cf_val_loss, 'hr': hr, 'ndcg': ndcg}
         logger.add_scalars('run{}'.format(run), eval_info, epoch)
         logger.close()
 
         # Perform early stopping
         early_stopping = train_args.get('early_stopping', None)
         if early_stopping is not None and early_stopping > 0 and epoch > train_args['epochs'] // 2:
-            tmp = tensor(cf_val_losses[-(train_args['early_stopping'] + 1):])
-            if cf_val_loss > tmp.mean().item():
+            tmp = tensor(hrs[-(train_args['early_stopping'] + 1):])
+            if hr > tmp.mean().item():
                 print('Early stopped!')
                 break
 
@@ -152,10 +156,12 @@ def single_run(run, model_class, model_args, dataset_args, train_args):
     torch.save(model.state_dict(), weights_path)
 
     # Pick the best loss of this run
-    cf_val_min_idx = np.argmin(cf_val_losses)
+    cf_val_min_idx = np.argmin(hr)[0]
 
     cf_train_loss = cf_train_losses[cf_val_min_idx]
     cf_val_loss = cf_val_losses[cf_val_min_idx]
+    cf_val_hr = hrs[cf_val_min_idx]
+    cf_val_ndcg = ndcgs[cf_val_min_idx]
 
     if train_args['pretrain']:
         kg_val_min_idx = np.argmin(kg_train_losses)

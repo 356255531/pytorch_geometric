@@ -31,7 +31,7 @@ def get_poster(movie_title, movie_year):
     return poster
 
 
-def read_ml(dir, processed=False, debug=None):
+def read_ml(dir, processed=False):
     """
     Read the movielens dataset from .dat file
     :param dir: the path to raw files (users.dat, movies.dat, ratings.dat)
@@ -130,9 +130,5 @@ def read_ml(dir, processed=False, debug=None):
                     'timestamp': timestamp,
                 })
         ratings = pd.DataFrame(ratings)
-
-        if debug:
-            df_idx = np.random.choice(np.arange(ratings.shape[0]), int(ratings.shape[0] * debug))
-            ratings = ratings.iloc[df_idx]
 
     return users, movies, ratings
