@@ -16,7 +16,7 @@ from .sparse import dense_to_sparse
 from .normalized_cut import normalized_cut
 from .grid import grid
 from .geodesic import geodesic_distance
-from .get_sec_edge_index import get_sec_order_edge
+from .pah_utils import create_path, filter_path
 from .convert import to_scipy_sparse_matrix, from_scipy_sparse_matrix
 from .convert import to_networkx, from_networkx
 from .random import (erdos_renyi_graph, stochastic_blockmodel_graph,
@@ -51,7 +51,8 @@ __all__ = [
     'normalized_cut',
     'grid',
     'geodesic_distance',
-    'get_sec_order_edge',
+    'create_path',
+    'filter_path',
     'to_scipy_sparse_matrix',
     'from_scipy_sparse_matrix',
     'to_networkx',

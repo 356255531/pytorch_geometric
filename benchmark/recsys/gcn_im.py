@@ -2,7 +2,7 @@ import argparse
 import torch
 
 from utils import get_folder_path
-from train_eval import run
+from .train_eval import run
 from models import KGGCNNet, GCNNet
 
 MODEL = 'GCN'

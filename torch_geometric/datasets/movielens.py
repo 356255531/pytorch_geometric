@@ -10,7 +10,7 @@ from collections import Counter
 from torch_geometric.data import InMemoryDataset, download_url
 from torch_geometric.io import read_ml
 from torch_geometric.data import Data, extract_zip
-from torch_geometric.utils import get_sec_order_edge
+from torch_geometric.utils import create_path, filter_path
 
 
 def save_df(df, path):
@@ -53,7 +53,7 @@ def reindex_df(users, items, interactions):
 
 def convert_2_data(
         users, items, ratings,
-        train_ratio, sec_order):
+        train_ratio, step_length):
     """
     Entitiy node include (gender, occupation, genres)
     num_nodes = num_users + num_items + num_genders + num_occupation + num_ages + num_genres + num_years + num_directors + num_actors + num_writers
@@ -61,11 +61,16 @@ def convert_2_data(
     num_users = users.shape[0]
     num_items = items.shape[0]
 
+    #########################  Define relationship  #########################
     relations = [
         'gender', 'occupation', 'age', 'genre', 'year', 'director', 'actor', 'writer', 'interact',
         '-gender', '-occupation', '-age', '-genre', '-year', '-director', '-actor', '-writer', '-interact'
     ]
 
+    relation2index = {r: i for i, r in enumerate(relations)}
+    index2relation = {i: r for r, i in relation2index.items()}
+
+    #########################  Define entities  #########################
     genders = ['M', 'F']
     num_genders = len(genders)
 
@@ -91,36 +96,55 @@ def convert_2_data(
 
     writers = list(items.writer.unique())
     num_writers = len(writers)
-    # Bulid node id
-    num_nodes = num_users + num_items + num_genders + num_occupations + num_ages + num_genres + num_years + num_directors + num_actors + num_writers
 
-    # Add node id features to users and items
-    users['nid'] = users['uid']
-    items['nid'] = items['iid'] + num_users
+    #########################  Define number of entities  #########################
+    num_nodes = num_users + num_items + num_genders + num_occupations + num_ages + num_genres + num_years + \
+                num_directors + num_actors + num_writers
 
-    # Build property2id map
+    #########################  Define entities to node id map  #########################
     acc = 0
-    user_node_id_map = {uid: i + acc for i, uid in enumerate(users['uid'].values)}
+    uid2nid = {uid: i + acc for i, uid in enumerate(users['uid'].values)}
+    nid2e = {i + acc: ('uid', uid) for i, uid in enumerate(users['uid'].values)}
     acc += users.shape[0]
-    item_node_id_map = {iid: i + acc for i, iid in enumerate(items['iid'].values)}
+    iid2nid = {iid: i + acc for i, iid in enumerate(items['iid'].values)}
+    for i, iid in enumerate(items['iid'].values):
+        nid2e[i + acc] = ('iid', iid)
     acc += items.shape[0]
-    gender_node_id_map = {gender: i + acc for i, gender in enumerate(genders)}
+    gender2nid = {gender: i + acc for i, gender in enumerate(genders)}
+    for i, gender in enumerate(genders):
+        nid2e[i + acc] = ('gender', gender)
     acc += num_genders
-    occupation_node_id_map = {occupation: i + acc for i, occupation in enumerate(occupations)}
+    occ2nid = {occupation: i + acc for i, occupation in enumerate(occupations)}
+    for i, occ in enumerate(occupations):
+        nid2e[i + acc] = ('occ', occ)
     acc += num_occupations
-    age_node_id_map = {age: i + acc for i, age in enumerate(ages)}
+    age2nid = {age: i + acc for i, age in enumerate(ages)}
+    for i, age in enumerate(ages):
+        nid2e[i + acc] = ('age', age)
     acc += num_ages
-    genre_node_id_map = {genre: i + acc for i, genre in enumerate(genres)}
+    genre2nid = {genre: i + acc for i, genre in enumerate(genres)}
+    for i, genre in enumerate(genres):
+        nid2e[i + acc] = ('genre', genre)
     acc += num_genres
-    year_node_id_map = {year: i + acc for i, year in enumerate(years)}
+    year2nid = {year: i + acc for i, year in enumerate(years)}
+    for i, year in enumerate(years):
+        nid2e[i + acc] = ('year', year)
     acc += num_years
-    director_node_id_map = {director: i + acc for i, director in enumerate(directors)}
+    director2nid = {director: i + acc for i, director in enumerate(directors)}
+    for i, director in enumerate(directors):
+        nid2e[i + acc] = ('director', director)
     acc += num_directors
-    actor_node_id_map = {actor: i + acc for i, actor in enumerate(actors)}
+    actor2nid = {actor: i + acc for i, actor in enumerate(actors)}
+    for i, actor in enumerate(actors):
+        nid2e[i + acc] = ('actor', actor)
     acc += num_actors
-    writer_node_id_map = {writer: i + acc for i, writer in enumerate(writers)}
+    writer2nid = {writer: i + acc for i, writer in enumerate(writers)}
+    for i, writer in enumerate(writers):
+        nid2e[i + acc] = ('writer', writer)
+    e2nid = {'uid': uid2nid, 'iid': iid2nid, 'gender': gender2nid, 'occ': occ2nid, 'age': age2nid, 'genre': genre2nid,
+             'year': year2nid, 'director': director2nid, 'actor': actor2nid, 'writer': writer2nid}
 
-    # Start creating edges
+    #########################  create graphs  #########################
     row_idx, col_idx = [], []
     edge_attrs = []
 
@@ -128,77 +152,158 @@ def convert_2_data(
 
     print('Creating user property edges...')
     for _, row in tqdm.tqdm(users.iterrows(), total=users.shape[0]):
-        u_nid = row['nid']
+        uid = row['uid']
         gender = row['gender']
-        occupation = row['occupation']
+        occ = row['occupation']
         age = row['age']
 
-        gender_nid = gender_node_id_map[gender]
+        u_nid = e2nid['uid'][uid]
+        gender_nid = e2nid['gender'][gender]
         row_idx.append(u_nid)
         col_idx.append(gender_nid)
         edge_attrs.append([relations.index('gender'), -1])
 
-        occupation_nid = occupation_node_id_map[occupation]
+        occ_nid = e2nid['occ'][occ]
         row_idx.append(u_nid)
-        col_idx.append(occupation_nid)
-        edge_attrs.append([relations.index('occupation'), -1])
+        col_idx.append(occ_nid)
+        edge_attrs.append([relation2index['occupation'], -1])
 
-        age_nid = age_node_id_map[age]
+        age_nid = age2nid[age]
         row_idx.append(u_nid)
         col_idx.append(age_nid)
-        edge_attrs.append([relations.index('age'), -1])
+        edge_attrs.append([relation2index['age'], -1])
     rating_begin += 3 * users.shape[0]
 
     print('Creating item property edges...')
     for _, row in tqdm.tqdm(items.iterrows(), total=items.shape[0]):
-        i_nid = row['nid']
+        iid = row['iid']
         year = row['discretized_year']
         director = row['director']
         actors = row['actor'].split(', ')
         writer = row['writer']
 
-        y_nid = year_node_id_map[year]
+        i_nid = e2nid['iid'][iid]
+        y_nid = e2nid['year'][year]
         row_idx.append(i_nid)
         col_idx.append(y_nid)
-        edge_attrs.append([relations.index('year'), -1])
+        edge_attrs.append([relation2index['year'], -1])
+        rating_begin += 1
 
         if director != '':
-            d_nid = director_node_id_map[director]
+            d_nid = e2nid['director'][director]
             row_idx.append(i_nid)
             col_idx.append(d_nid)
-            edge_attrs.append([relations.index('director'), -1])
+            edge_attrs.append([relation2index['director'], -1])
             rating_begin += 1
 
         for actor in actors:
             if actor != '':
-                a_nid = actor_node_id_map[actor]
+                a_nid = e2nid['actor'][actor]
                 row_idx.append(i_nid)
                 col_idx.append(a_nid)
-                edge_attrs.append([relations.index('actor'), -1])
+                edge_attrs.append([relation2index['actor'], -1])
                 rating_begin += 1
 
         if writer != '':
-            w_nid = writer_node_id_map[writer]
+            w_nid = e2nid['writer'][writer]
             row_idx.append(i_nid)
             col_idx.append(w_nid)
-            edge_attrs.append([relations.index('writer'), -1])
+            edge_attrs.append([relation2index['writer'], -1])
             rating_begin += 1
 
         for genre in genres:
             if not row[genre]:
                 continue
-            g_nid = genre_node_id_map[genre]
+            g_nid = e2nid['genre'][genre]
             row_idx.append(i_nid)
             col_idx.append(g_nid)
-            edge_attrs.append([relations.index('genre'), -1])
+            edge_attrs.append([relation2index['genre'], -1])
             rating_begin += 1
-    rating_begin += items.shape[0]
 
     print('Creating rating property edges...')
-    row_idx += list(users.iloc[ratings['uid']]['nid'].values)
-    col_idx += list(items.iloc[ratings['iid']]['nid'].values)
-    edge_attrs += [[relations.index('interact'), i] for i in list(ratings['rating'])]
+    row_idx += [e2nid['uid'][uid] for uid in ratings['uid']]
+    col_idx += [e2nid['iid'][iid] for iid in ratings['iid']]
+    edge_attrs += [[relation2index['interact'], i] for i in list(ratings['rating'])]
 
+    print('Creating inverse user property edges...')
+    for _, row in tqdm.tqdm(users.iterrows(), total=users.shape[0]):
+        uid = row['uid']
+        gender = row['gender']
+        occ = row['occupation']
+        age = row['age']
+
+        u_nid = e2nid['uid'][uid]
+        gender_nid = e2nid['gender'][gender]
+        row_idx.append(gender_nid)
+        col_idx.append(u_nid)
+        edge_attrs.append([relations.index('-gender'), -1])
+
+        occ_nid = e2nid['occ'][occ]
+        row_idx.append(occ_nid)
+        col_idx.append(u_nid)
+        edge_attrs.append([relation2index['-occupation'], -1])
+
+        age_nid = age2nid[age]
+        row_idx.append(age_nid)
+        col_idx.append(u_nid)
+        edge_attrs.append([relation2index['-age'], -1])
+
+    print('Creating item property edges...')
+    for _, row in tqdm.tqdm(items.iterrows(), total=items.shape[0]):
+        iid = row['iid']
+        year = row['discretized_year']
+        director = row['director']
+        actors = row['actor'].split(', ')
+        writer = row['writer']
+
+        i_nid = e2nid['iid'][iid]
+        y_nid = e2nid['year'][year]
+        row_idx.append(y_nid)
+        col_idx.append(i_nid)
+        edge_attrs.append([relation2index['-year'], -1])
+
+        if director != '':
+            d_nid = e2nid['director'][director]
+            row_idx.append(d_nid)
+            col_idx.append(i_nid)
+            edge_attrs.append([relation2index['-director'], -1])
+
+        for actor in actors:
+            if actor != '':
+                a_nid = e2nid['actor'][actor]
+                row_idx.append(a_nid)
+                col_idx.append(i_nid)
+                edge_attrs.append([relation2index['-actor'], -1])
+
+        if writer != '':
+            w_nid = e2nid['writer'][writer]
+            row_idx.append(w_nid)
+            col_idx.append(i_nid)
+            edge_attrs.append([relation2index['-writer'], -1])
+
+        for genre in genres:
+            if not row[genre]:
+                continue
+            g_nid = e2nid['genre'][genre]
+            row_idx.append(g_nid)
+            col_idx.append(i_nid)
+            edge_attrs.append([relation2index['-genre'], -1])
+
+    print('Creating rating property edges...')
+    col_idx += [e2nid['uid'][uid] for uid in ratings['uid']]
+    row_idx += [e2nid['iid'][iid] for iid in ratings['iid']]
+    edge_attrs += [[relation2index['-interact'], i] for i in list(ratings['rating'])]
+
+    row_idx = [int(idx) for idx in row_idx]
+    col_idx = [int(idx) for idx in col_idx]
+    row_idx = np.array(row_idx).reshape(1, -1)
+    col_idx = np.array(col_idx).reshape(1, -1)
+    edge_index = np.concatenate((row_idx, col_idx), axis=0)
+    edge_index = torch.from_numpy(edge_index).long()
+    edge_attrs = np.array(edge_attrs)
+    edge_attrs = torch.from_numpy(edge_attrs).long()
+
+    #########################  Build masks  #########################
     print('Building masks...')
     rating_mask = torch.ones(ratings.shape[0], dtype=torch.bool)
     rating_edge_mask = torch.cat(
@@ -208,13 +313,22 @@ def convert_2_data(
             torch.zeros(rating_begin, dtype=torch.bool),
             rating_mask),
     )
+
+    kwargs = {
+        'num_nodes': num_nodes, 'edge_index': edge_index, 'edge_attr': edge_attrs,
+        'rating_edge_mask': rating_edge_mask,
+        'users': users, 'ratings': ratings, 'items': items,
+        'relation2index': relation2index, 'index2relation': index2relation, 'num_relations': len(relations),
+        'e2nid': e2nid, 'nid2e': nid2e
+    }
+
     if train_ratio is not None:
         train_rating_mask = torch.zeros(ratings.shape[0], dtype=torch.bool)
-        test_rating_mask = torch.ones(ratings.shape[0], dtype=torch.bool)
+        test_rating_mask = torch.zeros(ratings.shape[0], dtype=torch.bool)
         train_rating_idx = rd.sample([i for i in range(ratings.shape[0])], int(ratings.shape[0] * train_ratio))
         test_rating_idx = list(set(range(ratings.shape[0])) - set(train_rating_idx))
         train_rating_mask[train_rating_idx] = 1
-        test_rating_mask[train_rating_idx] = 0
+        test_rating_mask[test_rating_idx] = 1
 
         train_edge_mask = torch.cat(
             (
@@ -226,116 +340,24 @@ def convert_2_data(
 
         test_edge_mask = torch.cat(
             (
-                torch.ones(rating_begin, dtype=torch.bool),
+                torch.zeros(rating_begin, dtype=torch.bool),
                 test_rating_mask,
-                torch.ones(rating_begin, dtype=torch.bool),
+                torch.zeros(rating_begin, dtype=torch.bool),
                 test_rating_mask)
         )
-
-    print('Creating reverse user property edges...')
-    for _, row in tqdm.tqdm(users.iterrows(), total=users.shape[0]):
-        u_nid = row['uid']
-        gender = row['gender']
-        occupation = row['occupation']
-        age = row['age']
-
-        gender_nid = gender_node_id_map[gender]
-        col_idx.append(u_nid)
-        row_idx.append(gender_nid)
-        edge_attrs.append([relations.index('-gender'), -1])
-
-        occupation_nid = occupation_node_id_map[occupation]
-        col_idx.append(u_nid)
-        row_idx.append(occupation_nid)
-        edge_attrs.append([relations.index('-occupation'), -1])
-
-        age_nid = age_node_id_map[age]
-        col_idx.append(u_nid)
-        row_idx.append(age_nid)
-        edge_attrs.append([relations.index('-age'), -1])
-
-    print('Creating reverse item property edges...')
-    for _, row in tqdm.tqdm(items.iterrows(), total=items.shape[0]):
-        i_nid = row['nid']
-        year = row['discretized_year']
-        director = row['director']
-        actors = row['actor'].split(', ')
-        writer = row['writer']
-
-        y_nid = year_node_id_map[year]
-        col_idx.append(i_nid)
-        row_idx.append(y_nid)
-        edge_attrs.append([relations.index('-year'), -1])
-
-        if director != '':
-            d_nid = director_node_id_map[director]
-            col_idx.append(i_nid)
-            row_idx.append(d_nid)
-            edge_attrs.append([relations.index('-director'), -1])
-
-        for actor in actors:
-            if actor != '':
-                a_nid = actor_node_id_map[actor]
-                col_idx.append(i_nid)
-                row_idx.append(a_nid)
-                edge_attrs.append([relations.index('-actor'), -1])
-
-        if writer != '':
-            w_nid = writer_node_id_map[writer]
-            col_idx.append(i_nid)
-            row_idx.append(w_nid)
-            edge_attrs.append([relations.index('-writer'), -1])
-            rating_begin += 1
-
-        for genre in genres:
-            if not row[genre]:
-                continue
-            g_nid = genre_node_id_map[genre]
-            col_idx.append(i_nid)
-            row_idx.append(g_nid)
-            edge_attrs.append([relations.index('-genre'), -1])
-    print('Creating reverse rating property edges...')
-    col_idx += list(users.iloc[ratings['uid']]['nid'].values)
-    row_idx += list(items.iloc[ratings['iid']]['nid'].values)
-    edge_attrs += [[relations.index('-interact'), i] for i in list(ratings['rating'])]
-
-    row_idx = [int(idx) for idx in row_idx]
-    col_idx = [int(idx) for idx in col_idx]
-    row_idx = np.array(row_idx).reshape(1, -1)
-    col_idx = np.array(col_idx).reshape(1, -1)
-    edge_index = np.concatenate((row_idx, col_idx), axis=0)
-    edge_index = torch.from_numpy(edge_index).long()
-    edge_attrs = np.array(edge_attrs)
-    edge_attrs = torch.from_numpy(edge_attrs).long()
-
-    kwargs = {
-        'num_nodes': num_nodes,
-        'edge_index': edge_index, 'edge_attr': edge_attrs,
-        'rating_edge_mask': rating_edge_mask,
-        'users': users, 'ratings': ratings, 'items': items,
-        'relations': relations, 'num_relations': len(relations),
-        'user_node_id_map': user_node_id_map, 'gender_node_id_map': gender_node_id_map,
-        'occupation_node_id_map': occupation_node_id_map, 'age_node_id_map': age_node_id_map,
-        'genre_node_id_map': genre_node_id_map, 'year_node_id_map': year_node_id_map,
-        'actor_node_id_map': actor_node_id_map, 'director_node_id_map': director_node_id_map,
-        'writer_node_id_map': writer_node_id_map
-    }
-
-    if train_ratio is not None:
-        kwargs['train_rating_idx'] = train_rating_idx
-        kwargs['test_rating_idx'] = test_rating_idx
         kwargs['train_edge_mask'] = train_edge_mask
         kwargs['test_edge_mask'] = test_edge_mask
-        if sec_order:
-            print('Creating second order edges...')
-            kwargs['train_sec_order_edge_index'] = \
-                get_sec_order_edge(edge_index[:, train_edge_mask])
-            kwargs['num_sec_order_edge'] = kwargs['train_sec_order_edge_index'].shape[1]
+        if step_length:
+            print('Creating path features...')
+            path = create_path(edge_index[:, train_edge_mask], step_length)
+            kwargs['train_path'] = filter_path(path)
+            kwargs['num_path'] = kwargs['train_path'].shape[1]
     else:
-        if sec_order:
+        if step_length:
             print('Creating second order edges...')
-            kwargs['sec_order_edge_index'] = get_sec_order_edge(edge_index)
-            kwargs['num_sec_order_edge'] = kwargs['sec_order_edge_index'].shape[1]
+            path = create_path(edge_index, step_length)
+            kwargs['path'] = filter_path(path)
+            kwargs['num_path'] = kwargs['path'].shape[1]
 
     return Data(**kwargs)
 
@@ -353,7 +375,7 @@ class MovieLens(InMemoryDataset):
         self.name = name.lower()
         assert self.name in ['1m']
         self.num_core = kwargs.get('num_core', 10)
-        self.sec_order = kwargs.get('sec_order', False)
+        self.step_length = kwargs.get('step_length', step_length)
         self.implicit = kwargs.get('implicit', False)
         self.train_ratio = kwargs.get('train_ratio', None)
         self.debug = kwargs.get('debug', False)
@@ -456,7 +478,7 @@ class MovieLens(InMemoryDataset):
             df_idx = np.random.choice(np.arange(ratings.shape[0]), int(ratings.shape[0] * self.debug))
             ratings = ratings.iloc[df_idx]
 
-        data = convert_2_data(users, items, ratings, self.train_ratio, self.sec_order)
+        data = convert_2_data(users, items, ratings, self.train_ratio, self.step_length)
 
         torch.save(self.collate([data]), self.processed_paths[0], pickle_protocol=4)
 

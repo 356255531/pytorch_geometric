@@ -8,7 +8,7 @@ import pandas as pd
 from torch_geometric.data import InMemoryDataset, download_url
 from torch_geometric.io import read_lastfm
 from torch_geometric.data import Data, extract_zip
-from torch_geometric.utils import get_sec_order_edge
+from torch_geometric.utils import create_path
 
 
 def reindex_df(
@@ -201,12 +201,12 @@ def convert_2_data(
         if sec_order:
             print('Creating second order edges...')
             kwargs['train_sec_order_edge_index'] = \
-                get_sec_order_edge(edge_index[:, train_edge_mask])
+                create_path(edge_index[:, train_edge_mask])
             kwargs['n_sec_order_edge'] = kwargs['train_sec_order_edge_index'].shape[1]
     else:
         if sec_order:
             print('Creating second order edges...')
-            kwargs['sec_order_edge_index'] = get_sec_order_edge(edge_index)
+            kwargs['sec_order_edge_index'] = create_path(edge_index)
             kwargs['n_sec_order_edge'] = kwargs['sec_order_edge_index'].shape[1]
 
     return Data(**kwargs)
