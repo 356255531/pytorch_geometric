@@ -16,7 +16,7 @@ from .sparse import dense_to_sparse
 from .normalized_cut import normalized_cut
 from .grid import grid
 from .geodesic import geodesic_distance
-from .path import create_path, filter_path
+from .path import create_path, join, filter_path
 from .convert import to_scipy_sparse_matrix, from_scipy_sparse_matrix
 from .convert import to_networkx, from_networkx
 from .random import (erdos_renyi_graph, stochastic_blockmodel_graph,

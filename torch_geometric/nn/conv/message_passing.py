@@ -124,10 +124,12 @@ class MessagePassing(torch.nn.Module):
         update_args = [kwargs[arg] for arg in self.__update_args__]
 
         out = self.message(*message_args)
+        if isinstance(out, tuple):
+            out, att = out
         out = scatter_(self.aggr, out, edge_index[i], dim, dim_size=size[i])
         out = self.update(out, *update_args)
 
-        return out
+        return out, att
 
     def message(self, x_j):  # pragma: no cover
         r"""Constructs messages to node :math:`i` in analogy to
