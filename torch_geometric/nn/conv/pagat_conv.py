@@ -7,7 +7,7 @@ from torch_geometric.utils import remove_self_loops, add_self_loops, softmax
 from ..inits import glorot, zeros
 
 
-class PAConv(MessagePassing):
+class PAGATConv(MessagePassing):
     r"""The graph attentional operator from the `"Graph Attention Networks"
     <https://arxiv.org/abs/1710.10903>`_ paper
 
@@ -49,7 +49,7 @@ class PAConv(MessagePassing):
 
     def __init__(self, in_channels, out_channels, heads=1, concat=True,
                  negative_slope=0.2, dropout=0, bias=True, **kwargs):
-        super(PAConv, self).__init__(aggr='add', **kwargs)
+        super(PAGATConv, self).__init__(aggr='add', **kwargs)
 
         self.in_channels = in_channels
         self.out_channels = out_channels
@@ -76,7 +76,7 @@ class PAConv(MessagePassing):
         glorot(self.att)
         zeros(self.bias)
 
-    def forward(self, x, sec_order_edge_index, size=None):
+    def forward(self, x, path, size=None):
         """sec_order_edge_index should be without self-loop"""
         if torch.is_tensor(x):
             x = torch.matmul(x, self.weight)
@@ -84,9 +84,9 @@ class PAConv(MessagePassing):
             x = (None if x[0] is None else torch.matmul(x[0], self.weight),
                  None if x[1] is None else torch.matmul(x[1], self.weight))
 
-        mid_x = x[sec_order_edge_index[1, :].reshape(-1, 1)]
+        mid_x = x[path[1, :].reshape(-1, 1)]
 
-        return self.propagate(sec_order_edge_index[[0, 1], :], size=size, x=x, mid_x=mid_x)
+        return self.propagate(path[[0, 2], :], size=size, x=x, mid_x=mid_x)
 
     def message(self, edge_index_i, x_i, x_j, size_i, mid_x):
         # Compute attention coefficients.
@@ -104,7 +104,7 @@ class PAConv(MessagePassing):
         # Sample attention coefficients stochastically.
         alpha = F.dropout(alpha, p=self.dropout, training=self.training)
 
-        return x_j * alpha.view(-1, self.heads, 1)
+        return (x_j + mid_x) * alpha.view(-1, self.heads, 1)
 
     def update(self, aggr_out):
         if self.concat is True:

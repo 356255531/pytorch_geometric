@@ -4,7 +4,7 @@ import torch
 from torch_geometric.datasets import MovieLens
 import pandas as pd
 from benchmark.kernel import PGAT
-from torch_geometric.nn import GATConv, PAConv
+from torch_geometric.nn import GATConv, PAGATConv
 
 import argparse
 import os.path as osp
