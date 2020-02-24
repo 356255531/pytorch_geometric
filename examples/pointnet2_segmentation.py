@@ -19,9 +19,9 @@ transform = T.Compose([
     T.RandomRotate(15, axis=2)
 ])
 pre_transform = T.NormalizeScale()
-train_dataset = ShapeNet(path, category, train=True, transform=transform,
+train_dataset = ShapeNet(path, category, split='trainval', transform=transform,
                          pre_transform=pre_transform)
-test_dataset = ShapeNet(path, category, train=False,
+test_dataset = ShapeNet(path, category, split='test',
                         pre_transform=pre_transform)
 train_loader = DataLoader(train_dataset, batch_size=12, shuffle=True,
                           num_workers=6)
@@ -46,7 +46,7 @@ class FPModule(torch.nn.Module):
 class Net(torch.nn.Module):
     def __init__(self, num_classes):
         super(Net, self).__init__()
-        self.sa1_module = SAModule(0.2, 0.2, MLP([3, 64, 64, 128]))
+        self.sa1_module = SAModule(0.2, 0.2, MLP([3 + 3, 64, 64, 128]))
         self.sa2_module = SAModule(0.25, 0.4, MLP([128 + 3, 128, 128, 256]))
         self.sa3_module = GlobalSAModule(MLP([256 + 3, 256, 512, 1024]))
 

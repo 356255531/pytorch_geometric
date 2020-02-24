@@ -32,6 +32,9 @@ from .line_graph import LineGraph
 from .laplacian_lambda_max import LaplacianLambdaMax
 from .generate_mesh_normals import GenerateMeshNormals
 from .delaunay import Delaunay
+from .to_superpixels import ToSLIC
+from .gdc import GDC
+from .grid_sampling import GridSampling
 
 __all__ = [
     'Compose',
@@ -68,4 +71,7 @@ __all__ = [
     'LaplacianLambdaMax',
     'GenerateMeshNormals',
     'Delaunay',
+    'ToSLIC',
+    'GDC',
+    'GridSampling'
 ]

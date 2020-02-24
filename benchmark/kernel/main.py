@@ -9,8 +9,9 @@ from graph_sage import GraphSAGE, GraphSAGEWithJK
 from gin import GIN0, GIN0WithJK, GIN, GINWithJK
 from graclus import Graclus
 from top_k import TopK
-from diff_pool import DiffPool
 from sag_pool import SAGPool
+from diff_pool import DiffPool
+from edge_pool import EdgePool
 from global_attention import GlobalAttentionNet
 from set2set import Set2SetNet
 from sort_pool import SortPool
@@ -35,6 +36,7 @@ nets = [
     TopK,
     SAGPool,
     DiffPool,
+    EdgePool,
     GCN,
     GraphSAGE,
     GIN0,
@@ -57,8 +59,7 @@ for dataset_name, Net in product(datasets, nets):
     best_result = (float('inf'), 0, 0)  # (loss, acc, std)
     print('-----\n{} - {}'.format(dataset_name, Net.__name__))
     for num_layers, hidden in product(layers, hiddens):
-        dataset = get_dataset(dataset_name, sparse=Net != DiffPool,
-                              cleaned=True)
+        dataset = get_dataset(dataset_name, sparse=Net != DiffPool)
         model = Net(dataset, num_layers, hidden)
         loss, acc, std = cross_validation_with_val_set(
             dataset,

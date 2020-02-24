@@ -1,7 +1,7 @@
 from .karate import KarateClub
 from .tu_dataset import TUDataset
 from .planetoid import Planetoid
-from .cora_full import CoraFull
+from .citation_full import CitationFull, CoraFull
 from .coauthor import Coauthor
 from .amazon import Amazon
 from .ppi import PPI
@@ -35,6 +35,7 @@ __all__ = [
     'KarateClub',
     'TUDataset',
     'Planetoid',
+    'CitationFull',
     'CoraFull',
     'Coauthor',
     'Amazon',

@@ -13,6 +13,7 @@ venv/
 .idea/
 .DStore/
 checkpoint/
+.vscode
 
 !torch_geometric/data/
 !test/data/
