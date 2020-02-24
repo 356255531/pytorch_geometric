@@ -80,7 +80,8 @@ def convert_2_data(
     ages = list(users.age.unique())
     num_ages = len(ages)
 
-    genres = list(items.keys()[3:21])
+    genres = list(items.keys()[4:21])
+    print(genres)
     num_genres = len(genres)
 
     years = list(np.unique(items.discretized_year.to_numpy()))

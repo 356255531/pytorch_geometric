@@ -22,3 +22,7 @@ def test_gcn_conv():
     conv = GCNConv(in_channels, out_channels, cached=True)
     conv(x, edge_index).size() == (num_nodes, out_channels)
     conv(x, edge_index).size() == (num_nodes, out_channels)
+
+
+if __name__ == '__main__':
+    test_gcn_conv()

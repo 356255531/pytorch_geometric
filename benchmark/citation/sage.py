@@ -1,7 +1,7 @@
 import argparse
 import torch
 import torch.nn.functional as F
-from torch_geometric.nn import GCNConv
+from torch_geometric.nn import SAGEConv
 
 from datasets import get_planetoid_dataset
 from train_eval import run, random_planetoid_splits
@@ -23,8 +23,8 @@ args = parser.parse_args()
 class Net(torch.nn.Module):
     def __init__(self, dataset):
         super(Net, self).__init__()
-        self.conv1 = GCNConv(dataset.num_features, args.hidden)
-        self.conv2 = GCNConv(args.hidden, dataset.num_classes)
+        self.conv1 = SAGEConv(dataset.num_features, args.hidden)
+        self.conv2 = SAGEConv(args.hidden, dataset.num_classes)
 
     def reset_parameters(self):
         self.conv1.reset_parameters()
