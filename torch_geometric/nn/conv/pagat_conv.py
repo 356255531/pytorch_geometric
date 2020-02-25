@@ -7,7 +7,7 @@ from torch_geometric.utils import remove_self_loops, add_self_loops, softmax
 from ..inits import glorot, zeros
 
 
-class PAConv(MessagePassing):
+class PAGATConv(MessagePassing):
     r"""The graph attentional operator from the `"Graph Attention Networks"
     <https://arxiv.org/abs/1710.10903>`_ paper
 
@@ -49,7 +49,7 @@ class PAConv(MessagePassing):
 
     def __init__(self, in_channels, out_channels, heads=1, concat=True,
                  negative_slope=0.2, dropout=0, bias=True, **kwargs):
-        super(PAConv, self).__init__(aggr='add', **kwargs)
+        super(PAGATConv, self).__init__(aggr='add', **kwargs)
 
         self.in_channels = in_channels
         self.out_channels = out_channels
@@ -76,7 +76,7 @@ class PAConv(MessagePassing):
         glorot(self.att)
         zeros(self.bias)
 
-    def forward(self, x, sec_order_edge_index, size=None):
+    def forward(self, x, path, size=None):
         """sec_order_edge_index should be without self-loop"""
         if torch.is_tensor(x):
             x = torch.matmul(x, self.weight)
@@ -84,27 +84,29 @@ class PAConv(MessagePassing):
             x = (None if x[0] is None else torch.matmul(x[0], self.weight),
                  None if x[1] is None else torch.matmul(x[1], self.weight))
 
-        mid_x = x[sec_order_edge_index[1, :].reshape(-1, 1)]
+        x_tail = x[path[-1, :]]
 
-        return self.propagate(sec_order_edge_index[[0, 1], :], size=size, x=x, mid_x=mid_x)
+        return self.propagate(edge_index=path[:2, :], size=size, x=x, x_tail=x_tail)
 
-    def message(self, edge_index_i, x_i, x_j, size_i, mid_x):
+    def message(self, edge_index_i, x_i, x_j, size_i, x_tail):
         # Compute attention coefficients.
         x_j = x_j.view(-1, self.heads, self.out_channels)
         if x_i is None:
             alpha = (x_j * self.att[:, :, self.out_channels:]).sum(dim=-1)
         else:
             x_i = x_i.view(-1, self.heads, self.out_channels)
-            mid_x = mid_x.view(-1, self.heads, self.out_channels)
-            alpha = (torch.cat([x_i, mid_x, x_j], dim=-1) * self.att).sum(dim=-1)
+            x_tail = x_tail.view(-1, self.heads, self.out_channels)
+            alpha = (torch.cat([x_i, x_j, x_tail], dim=-1) * self.att).sum(dim=-1)
 
         alpha = F.leaky_relu(alpha, self.negative_slope)
         alpha = softmax(alpha, edge_index_i, size_i)
 
         # Sample attention coefficients stochastically.
         alpha = F.dropout(alpha, p=self.dropout, training=self.training)
+        msg = (x_j + x_tail) / 2 * alpha.view(-1, self.heads, 1)
+        att = torch.mean(alpha.view(-1, self.heads, 1), dim=1)
 
-        return x_j * alpha.view(-1, self.heads, 1)
+        return msg, att
 
     def update(self, aggr_out):
         if self.concat is True:

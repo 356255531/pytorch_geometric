@@ -80,7 +80,8 @@ def convert_2_data(
     ages = list(users.age.unique())
     num_ages = len(ages)
 
-    genres = list(items.keys()[3:21])
+    genres = list(items.keys()[4:21])
+    print(genres)
     num_genres = len(genres)
 
     years = list(np.unique(items.discretized_year.to_numpy()))
@@ -95,6 +96,7 @@ def convert_2_data(
     num_actors = len(actors)
 
     writers = list(items.writer.unique())
+    writers = [writer for writer in writers if writer != '']
     num_writers = len(writers)
 
     #########################  Define number of entities  #########################
@@ -301,7 +303,7 @@ def convert_2_data(
     edge_index = np.concatenate((row_idx, col_idx), axis=0)
     edge_index = torch.from_numpy(edge_index).long()
     edge_attrs = np.array(edge_attrs)
-    edge_attrs = torch.from_numpy(edge_attrs).long()
+    edge_attrs = torch.from_numpy(edge_attrs).float()
 
     #########################  Build masks  #########################
     print('Building masks...')
@@ -311,7 +313,9 @@ def convert_2_data(
             torch.zeros(rating_begin, dtype=torch.bool),
             rating_mask,
             torch.zeros(rating_begin, dtype=torch.bool),
-            rating_mask),
+            rating_mask
+        ),
+        dim=0
     )
 
     kwargs = {
@@ -354,7 +358,7 @@ def convert_2_data(
             kwargs['num_path'] = kwargs['train_path'].shape[1]
     else:
         if step_length:
-            print('Creating second order edges...')
+            print('Creating path features...')
             path = create_path(edge_index, step_length)
             kwargs['path'] = filter_path(path)
             kwargs['num_path'] = kwargs['path'].shape[1]
@@ -375,9 +379,9 @@ class MovieLens(InMemoryDataset):
         self.name = name.lower()
         assert self.name in ['1m']
         self.num_core = kwargs.get('num_core', 10)
-        self.step_length = kwargs.get('step_length', step_length)
-        self.implicit = kwargs.get('implicit', False)
-        self.train_ratio = kwargs.get('train_ratio', None)
+        self.step_length = kwargs.get('step_length', 2)
+        self.implicit = kwargs.get('implicit', True)
+        self.train_ratio = kwargs.get('train_ratio', False)
         self.debug = kwargs.get('debug', False)
         self.seed = kwargs.get('seed', None)
         self.suffix = self.build_suffix()
@@ -477,6 +481,8 @@ class MovieLens(InMemoryDataset):
         if self.debug:
             df_idx = np.random.choice(np.arange(ratings.shape[0]), int(ratings.shape[0] * self.debug))
             ratings = ratings.iloc[df_idx]
+            users = users[users.uid.isin(ratings['uid'])]
+            items = items[items.iid.isin(ratings['iid'])]
 
         data = convert_2_data(users, items, ratings, self.train_ratio, self.step_length)
 
@@ -491,8 +497,8 @@ class MovieLens(InMemoryDataset):
             suffixes.append('train_{}'.format(self.train_ratio))
         if self.debug:
             suffixes.append('debug_{}'.format(self.debug))
-        if self.sec_order:
-            suffixes.append('sec_order')
+        if self.step_length:
+            suffixes.append('path_{}'.format(self.step_length))
         if self.seed is not None:
             suffixes.append('seed_{}'.format(self.seed))
         if not suffixes:
@@ -500,3 +506,14 @@ class MovieLens(InMemoryDataset):
         else:
             suffix = '_'.join(suffixes)
         return '_' + suffix
+
+
+if __name__ == '__main__':
+    import os.path as osp
+    root = osp.join('.', 'tmp', 'ml')
+    name = '1m'
+    debug = 0.01
+    dataset = MovieLens(root=root, name='1m', debug=debug)
+
+    import pdb
+    pdb.set_trace()

@@ -1,7 +1,7 @@
 import torch
 import torch.nn.functional as F
 
-from torch_geometric.nn import GATConv, PAConv
+from torch_geometric.nn import GATConv, PAGATConv
 
 from .kg_net import KGNet
 
@@ -21,7 +21,7 @@ class KGPGATNet(KGNet):
         self.conv1 = GATConv(
             emb_dim, int(hidden_size // heads),
             heads=heads, dropout=0.6)
-        self.conv2 = PAConv(
+        self.conv2 = PAGATConv(
             int(hidden_size // heads) * heads, emb_dim,
             heads=1, dropout=0.6)
         # self.conv1 = ChebConv(data.num_features, 16, K=2)

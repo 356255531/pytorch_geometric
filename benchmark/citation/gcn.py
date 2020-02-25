@@ -3,10 +3,11 @@ import torch
 import torch.nn.functional as F
 from torch_geometric.nn import GCNConv
 
-from citation import get_planetoid_dataset, random_planetoid_splits, run
+from datasets import get_planetoid_dataset
+from train_eval import run, random_planetoid_splits
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--dataset', type=str, required=True)
+parser.add_argument('--dataset', type=str, default='cora')
 parser.add_argument('--random_splits', type=bool, default=False)
 parser.add_argument('--runs', type=int, default=100)
 parser.add_argument('--epochs', type=int, default=200)
