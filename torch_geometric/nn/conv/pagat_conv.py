@@ -9,7 +9,7 @@ from torch_geometric.utils import remove_self_loops, add_self_loops, softmax
 from ..inits import glorot, zeros
 
 
-class PGATConv(MessagePassing):
+class PAGATConv(MessagePassing):
     r"""The path aware graph attention operator
 
     .. math::
@@ -50,39 +50,26 @@ class PGATConv(MessagePassing):
 
     def __init__(self,
                  in_channels, out_channels,
-                 transformer_encoder_layer_size=3,
-                 transformer_encoder_hidden_size=16,
-                 path_heads=2, node_heads=2, concat=True,
+                 heads=2, concat=False,
                  negative_slope=0.2,
-                 pgat_dropout=0, transformer_dropout=0,
-                 transformer_activation='relu',
+                 dropout=0,
                  bias=True, **kwargs):
-        super(PGATConv, self).__init__(aggr='add', **kwargs)
+        super(PAGATConv, self).__init__(aggr='add', **kwargs)
 
         self.in_channels = in_channels
         self.out_channels = out_channels
-        self.path_heads = path_heads
-        self.node_heads = node_heads
+        self.heads = heads
         self.concat = concat
         self.negative_slope = negative_slope
-        self.pgat_dropout = pgat_dropout
+        self.dropout = dropout
 
         # Transformer encoder
         self.weight = Parameter(
-            torch.Tensor(in_channels, path_heads * out_channels))
-        transformer_encoder_layer = TransformerEncoderLayer(
-            path_heads * out_channels, node_heads,
-            dim_feedforward=transformer_encoder_hidden_size,
-            dropout=transformer_dropout,
-            activation=transformer_activation
-        )
-        encoder_norm = LayerNorm(path_heads * out_channels)
-        self.transformer_encoder = TransformerEncoder(
-            transformer_encoder_layer, transformer_encoder_layer_size, encoder_norm)
-        self.att = Parameter(torch.Tensor(1, path_heads, 2 * out_channels))
+            torch.Tensor(in_channels, heads * out_channels))
+        self.att = Parameter(torch.Tensor(1, heads, 2 * out_channels))
 
         if bias and concat:
-            self.bias = Parameter(torch.Tensor(path_heads * out_channels))
+            self.bias = Parameter(torch.Tensor(heads * out_channels))
         elif bias and not concat:
             self.bias = Parameter(torch.Tensor(out_channels))
         else:
@@ -118,25 +105,25 @@ class PGATConv(MessagePassing):
 
     def message(self, edge_index_i, size_i, x, path_index_without_target):
         # Compute attention coefficients.
-        x_path = self.transformer_encoder(x[path_index_without_target.T]).mean(dim=1)
-        x_path = x_path.view(-1, self.path_heads, self.out_channels)
+        x_path = x[path_index_without_target.T].mean(dim=1)
+        x_path = x_path.view(-1, self.heads,  self.out_channels)
         if x_path is None:
             alpha = (x_path * self.att[:, :, self.out_channels:]).sum(dim=-1)
         else:
-            x_i = x[edge_index_i].view(-1, self.path_heads, self.out_channels)
+            x_i = x[edge_index_i].view(-1, self.heads, self.out_channels)
             alpha = (torch.cat([x_i, x_path], dim=-1) * self.att).sum(dim=-1)
 
         alpha = F.leaky_relu(alpha, self.negative_slope)
         alpha = softmax(alpha, edge_index_i, size_i)
 
         # Sample attention coefficients stochastically.
-        alpha = F.dropout(alpha, p=self.pgat_dropout, training=self.training)
+        alpha = F.dropout(alpha, p=self.dropout, training=self.training)
 
-        return x_path * alpha.view(-1, self.path_heads, 1)
+        return x_path * alpha.view(-1, self.heads, 1)
 
     def update(self, aggr_out):
         if self.concat is True:
-            aggr_out = aggr_out.view(-1, self.path_heads * self.out_channels)
+            aggr_out = aggr_out.view(-1, self.heads * self.out_channels)
         else:
             aggr_out = aggr_out.mean(dim=1)
 
@@ -145,6 +132,6 @@ class PGATConv(MessagePassing):
         return aggr_out
 
     def __repr__(self):
-        return '{}({}, {}, path_heads={})'.format(self.__class__.__name__,
+        return '{}({}, {}, heads={})'.format(self.__class__.__name__,
                                              self.in_channels,
-                                             self.out_channels, self.path_heads)
+                                             self.out_channels, self.heads)

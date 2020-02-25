@@ -1,7 +1,7 @@
 import argparse
 import torch
 import torch.nn.functional as F
-from torch_geometric.nn import PGATConv
+from torch_geometric.nn import PAGATConv
 from torch_geometric.utils.path import create_path
 
 from datasets import get_planetoid_dataset
@@ -33,11 +33,11 @@ def pre_transform(data):
 class Net(torch.nn.Module):
     def __init__(self, dataset):
         super(Net, self).__init__()
-        self.conv1 = PGATConv(
+        self.conv1 = PAGATConv(
             dataset.num_features,
             args.hidden)
-        self.conv2 = PGATConv(
-            args.hidden * args.heads,
+        self.conv2 = PAGATConv(
+            args.hidden,
             dataset.num_classes)
 
     def reset_parameters(self):

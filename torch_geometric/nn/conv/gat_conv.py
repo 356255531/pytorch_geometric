@@ -100,8 +100,6 @@ class GATConv(MessagePassing):
             alpha = (torch.cat([x_i, x_j], dim=-1) * self.att).sum(dim=-1)
 
         alpha = F.leaky_relu(alpha, self.negative_slope)
-        import pdb
-        pdb.set_trace()
         alpha = softmax(alpha, edge_index_i, size_i)
 
         # Sample attention coefficients stochastically.
