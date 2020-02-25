@@ -84,11 +84,9 @@ class PAGATConv(MessagePassing):
             x = (None if x[0] is None else torch.matmul(x[0], self.weight),
                  None if x[1] is None else torch.matmul(x[1], self.weight))
 
-        x_tail = x[path[-1, :]]
+        return self.propagate(edge_index=path[:2, :], size=size, x=x, path_without_edge_index=path[2:, :])
 
-        return self.propagate(edge_index=path[:2, :], size=size, x=x, x_tail=x_tail)
-
-    def message(self, edge_index_i, x_i, x_j, size_i, x_tail):
+    def message(self, edge_index_i, edge_index_j, path_without_edge_index, x):
         # Compute attention coefficients.
         x_j = x_j.view(-1, self.heads, self.out_channels)
         if x_i is None:

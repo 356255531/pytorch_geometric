@@ -79,6 +79,7 @@ def run(dataset, model, runs, epochs, lr, weight_decay, early_stopping,
                 tmp = tensor(val_loss_history[-(early_stopping + 1):-1])
                 if eval_info['val_loss'] > tmp.mean().item():
                     break
+        print('Accuracy of the run {} is {}'.format(_ + 1, test_acc))
 
         if torch.cuda.is_available():
             torch.cuda.synchronize()

@@ -24,12 +24,8 @@ from .x_conv import XConv
 from .ppf_conv import PPFConv
 from .feast_conv import FeaStConv
 from .hypergraph_conv import HypergraphConv
-<<<<<<< HEAD
-from .pa_conv import PAConv
 from .pgat_conv import PGATConv
-=======
-from .pagat_conv import PAGATConv
->>>>>>> eda243a4d176820522aa8c401b2750ef5e42052f
+
 
 __all__ = [
     'MessagePassing',
@@ -60,6 +56,5 @@ __all__ = [
     'PPFConv',
     'FeaStConv',
     'HypergraphConv',
-    'PAConv',
     'PGATConv'
 ]

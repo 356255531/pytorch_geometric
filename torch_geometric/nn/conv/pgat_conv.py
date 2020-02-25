@@ -55,7 +55,7 @@ class PGATConv(MessagePassing):
                  path_heads=1, node_heads=1, concat=True,
                  negative_slope=0.2,
                  pgat_dropout=0, transformer_dropout=0,
-                 transformer_activation='leaky_relu',
+                 transformer_activation='relu',
                  bias=True, **kwargs):
         super(PGATConv, self).__init__(aggr='add', **kwargs)
 
@@ -68,11 +68,17 @@ class PGATConv(MessagePassing):
         self.pgat_dropout = pgat_dropout
 
         # Transformer encoder
-        transformer_encoder_layer = TransformerEncoderLayer(in_channels, node_heads, transformer_encoder_hidden_size, transformer_dropout, transformer_activation)
-        encoder_norm = LayerNorm(in_channels)
-        self.transformer_encoder = TransformerEncoder(transformer_encoder_layer, transformer_encoder_layer_size, encoder_norm)
         self.weight = Parameter(
             torch.Tensor(in_channels, path_heads * out_channels))
+        transformer_encoder_layer = TransformerEncoderLayer(
+            path_heads * out_channels, node_heads,
+            dim_feedforward=transformer_encoder_hidden_size,
+            dropout=transformer_dropout,
+            activation=transformer_activation
+        )
+        encoder_norm = LayerNorm(path_heads * out_channels)
+        self.transformer_encoder = TransformerEncoder(
+            transformer_encoder_layer, transformer_encoder_layer_size, encoder_norm)
         self.att = Parameter(torch.Tensor(1, path_heads, 2 * out_channels))
 
         if bias and concat:
@@ -118,8 +124,8 @@ class PGATConv(MessagePassing):
         if x_path is None:
             alpha = (x_path * self.att[:, :, self.out_channels:]).sum(dim=-1)
         else:
-            x_i = x_path.view(-1, self.path_heads, self.out_channels)
-            alpha = (torch.cat([x[edge_index_i], x_path], dim=-1) * self.att).sum(dim=-1)
+            x_i = x[edge_index_i].view(-1, self.path_heads, self.out_channels)
+            alpha = (torch.cat([x_i, x_path], dim=-1) * self.att).sum(dim=-1)
 
         alpha = F.leaky_relu(alpha, self.negative_slope)
         alpha = softmax(alpha, edge_index_i, size_i)
@@ -127,7 +133,7 @@ class PGATConv(MessagePassing):
         # Sample attention coefficients stochastically.
         alpha = F.dropout(alpha, p=self.dropout, training=self.training)
 
-        return x_j * alpha.view(-1, self.path_heads, 1)
+        return x_path * alpha.view(-1, self.path_heads, 1)
 
     def update(self, aggr_out):
         if self.concat is True:
@@ -140,6 +146,6 @@ class PGATConv(MessagePassing):
         return aggr_out
 
     def __repr__(self):
-        return '{}({}, {}, heads={})'.format(self.__class__.__name__,
+        return '{}({}, {}, path_heads={})'.format(self.__class__.__name__,
                                              self.in_channels,
                                              self.out_channels, self.path_heads)
