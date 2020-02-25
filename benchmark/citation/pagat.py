@@ -1,8 +1,10 @@
 import argparse
 import torch
 import torch.nn.functional as F
+from torch.nn import Parameter
 from torch_geometric.nn import PAGATConv
-from torch_geometric.utils.path import create_path
+from torch_geometric.nn.inits import glorot
+from torch_geometric.utils import create_path, remove_self_loops
 
 from datasets import get_planetoid_dataset
 from train_eval import random_planetoid_splits, run
@@ -25,9 +27,31 @@ args = parser.parse_args()
 
 def pre_transform(data):
     edge_index = data.edge_index
+    edge_index = remove_self_loops(edge_index)[0]
     path_index = torch.tensor(create_path(edge_index, 2)).long()
+
+    head, mid, tail = path_index
+    mask = head != tail
+    path_index = path_index[:, mask]
+    new_path_index = torch.arange(0, data.num_nodes, dtype=torch.long,
+                              device=edge_index.device)
+    new_path_index = new_path_index.unsqueeze(0).repeat(3, 1)
+    data.path_index = torch.cat([path_index, new_path_index], dim=1)
     data.path_index = path_index
     return data
+
+
+class AttPathEncoder(torch.nn.Module):
+    def __init__(self, in_channels, heads):
+        super(AttPathEncoder, self).__init__()
+        self.att = Parameter(torch.Tensor(1, heads, 2 * out_channels))
+        self.reset_parameters()
+
+    def reset_parameters(self):
+        glorot(self.att)
+
+    def forward(self, path_index_without_target, x):
+        x_path = x[path_index_without_target.T]
 
 
 class Net(torch.nn.Module):
@@ -35,10 +59,15 @@ class Net(torch.nn.Module):
         super(Net, self).__init__()
         self.conv1 = PAGATConv(
             dataset.num_features,
-            args.hidden)
+            args.hidden,
+            heads=args.heads,
+            dropout=args.dropout)
         self.conv2 = PAGATConv(
             args.hidden,
-            dataset.num_classes)
+            dataset.num_classes,
+            heads=args.output_heads,
+            concat=False,
+            dropout=args.dropout)
 
     def reset_parameters(self):
         self.conv1.reset_parameters()

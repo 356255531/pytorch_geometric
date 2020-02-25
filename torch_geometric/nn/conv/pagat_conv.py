@@ -9,6 +9,16 @@ from torch_geometric.utils import remove_self_loops, add_self_loops, softmax
 from ..inits import glorot, zeros
 
 
+class MeanPathEncoder(object):
+    def __init__(self, heads, out_channels):
+        self.heads = heads
+        self.out_channels = out_channels
+
+    def __call__(self, path_index_without_target, x):
+        x_path = x[path_index_without_target.T].mean(dim=1)
+        return x_path.view(-1, self.heads, self.out_channels)
+
+
 class PAGATConv(MessagePassing):
     r"""The path aware graph attention operator
 
@@ -50,6 +60,7 @@ class PAGATConv(MessagePassing):
 
     def __init__(self,
                  in_channels, out_channels,
+                 path_encoder=None,
                  heads=2, concat=False,
                  negative_slope=0.2,
                  dropout=0,
@@ -58,14 +69,14 @@ class PAGATConv(MessagePassing):
 
         self.in_channels = in_channels
         self.out_channels = out_channels
+        self.path_encoder = path_encoder if path_encoder is not None else MeanPathEncoder(heads, out_channels)
         self.heads = heads
         self.concat = concat
         self.negative_slope = negative_slope
         self.dropout = dropout
 
         # Transformer encoder
-        self.weight = Parameter(
-            torch.Tensor(in_channels, heads * out_channels))
+        self.weight = Parameter(torch.Tensor(in_channels, heads * out_channels))
         self.att = Parameter(torch.Tensor(1, heads, 2 * out_channels))
 
         if bias and concat:
@@ -105,10 +116,9 @@ class PAGATConv(MessagePassing):
 
     def message(self, edge_index_i, size_i, x, path_index_without_target):
         # Compute attention coefficients.
-        x_path = x[path_index_without_target.T].mean(dim=1)
-        x_path = x_path.view(-1, self.heads,  self.out_channels)
+        x_path = self.path_encoder(path_index_without_target, x)
         if x_path is None:
-            alpha = (x_path * self.att[:, :, self.out_channels:]).sum(dim=-1)
+            alpha = (x_path * self.att[:, :, self.out_channels:]).sum(edim=-1)
         else:
             x_i = x[edge_index_i].view(-1, self.heads, self.out_channels)
             alpha = (torch.cat([x_i, x_path], dim=-1) * self.att).sum(dim=-1)
