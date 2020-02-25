@@ -73,6 +73,7 @@ def run(dataset, model, runs, epochs, lr, weight_decay, early_stopping,
             if eval_info['val_loss'] < best_val_loss:
                 best_val_loss = eval_info['val_loss']
                 test_acc = eval_info['test_acc']
+                print('Epoch {}, acc {}'.format(epoch, test_acc))
 
             val_loss_history.append(eval_info['val_loss'])
             if early_stopping > 0 and epoch > epochs // 2:

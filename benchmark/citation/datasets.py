@@ -4,9 +4,9 @@ from torch_geometric.datasets import Planetoid
 import torch_geometric.transforms as T
 
 
-def get_planetoid_dataset(name, normalize_features=False, transform=None):
+def get_planetoid_dataset(name, normalize_features=False, pre_transform=None, transform=None):
     path = osp.join(osp.dirname(osp.realpath(__file__)), '..', 'data', name)
-    dataset = Planetoid(path, name)
+    dataset = Planetoid(path, name, pre_transform=pre_transform)
 
     if transform is not None and normalize_features:
         dataset.transform = T.Compose([T.NormalizeFeatures(), transform])

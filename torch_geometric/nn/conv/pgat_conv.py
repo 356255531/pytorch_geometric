@@ -52,7 +52,7 @@ class PGATConv(MessagePassing):
                  in_channels, out_channels,
                  transformer_encoder_layer_size=6,
                  transformer_encoder_hidden_size=64,
-                 path_heads=1, node_heads=1, concat=True,
+                 path_heads=4, node_heads=4, concat=True,
                  negative_slope=0.2,
                  pgat_dropout=0, transformer_dropout=0,
                  transformer_activation='relu',
@@ -106,8 +106,7 @@ class PGATConv(MessagePassing):
         if torch.is_tensor(x):
             x = torch.matmul(x, self.weight)
         else:
-            x = (None if x[0] is None else torch.matmul(x[0], self.weight),
-                 None if x[1] is None else torch.matmul(x[1], self.weight))
+            raise AttributeError('x must be tensor!')
 
         edge_index = path[-2:] if self.flow == 'source_to_target' else path[:2]
         if path.shape[0] > 2:
@@ -119,7 +118,7 @@ class PGATConv(MessagePassing):
 
     def message(self, edge_index_i, size_i, x, path_index_without_target):
         # Compute attention coefficients.
-        x_path = self.transformer_encoder(x[path_index_without_target.T])
+        x_path = self.transformer_encoder(x[path_index_without_target.T]).mean(dim=1)
         x_path = x_path.view(-1, self.path_heads, self.out_channels)
         if x_path is None:
             alpha = (x_path * self.att[:, :, self.out_channels:]).sum(dim=-1)
@@ -131,7 +130,7 @@ class PGATConv(MessagePassing):
         alpha = softmax(alpha, edge_index_i, size_i)
 
         # Sample attention coefficients stochastically.
-        alpha = F.dropout(alpha, p=self.dropout, training=self.training)
+        alpha = F.dropout(alpha, p=self.pgat_dropout, training=self.training)
 
         return x_path * alpha.view(-1, self.path_heads, 1)
 

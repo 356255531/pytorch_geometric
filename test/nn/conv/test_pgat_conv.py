@@ -17,11 +17,9 @@ def test_pgat_conv():
     conv = PGATConv(in_channels, out_channels, path_heads=2, node_heads=2)
     assert conv.__repr__() == 'PGATConv(16, 32, path_heads=2)'
     assert conv(x, edge_index).size() == (num_nodes, 2 * out_channels)
-    assert conv((x, None), edge_index).size() == (num_nodes, 2 * out_channels)
 
-    conv = PGATConv(in_channels, out_channels, heads=2, concat=False)
+    conv = PGATConv(in_channels, out_channels, path_heads=2, concat=False)
     assert conv(x, edge_index).size() == (num_nodes, out_channels)
-    assert conv((x, None), edge_index).size() == (num_nodes, out_channels)
 
 
 if __name__ == '__main__':
