@@ -479,10 +479,12 @@ class MovieLens(InMemoryDataset):
             save_df(ratings, join(self.processed_dir, 'ratings.pkl'))
 
         if self.debug:
-            df_idx = np.random.choice(np.arange(ratings.shape[0]), int(ratings.shape[0] * self.debug))
-            ratings = ratings.iloc[df_idx]
-            users = users[users.uid.isin(ratings['uid'])]
-            items = items[items.iid.isin(ratings['iid'])]
+            most_popular_movie_iids = ratings.sort_values(by='movie_count', ascending=False).iid.drop_duplicates()
+            most_popular_movie_iids = most_popular_movie_iids[:int(most_popular_movie_iids.shape[0] * self.debug)]
+            items = items[items.iid.isin(most_popular_movie_iids)]
+            ratings = ratings[ratings.iid.isin(most_popular_movie_iids)]
+            uids = ratings.uid.drop_duplicates()
+            users = users[users.uid.isin(uids)]
 
         data = convert_2_data(users, items, ratings, self.train_ratio, self.step_length)
 
