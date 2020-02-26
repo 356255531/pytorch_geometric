@@ -61,9 +61,9 @@ class PAGATConv(MessagePassing):
     def __init__(self,
                  in_channels, out_channels,
                  path_encoder=None,
-                 heads=2, concat=False,
+                 heads=2, concat=True,
                  negative_slope=0.2,
-                 dropout=0,
+                 dropout=0.5,
                  bias=True, **kwargs):
         super(PAGATConv, self).__init__(aggr='add', **kwargs)
 
@@ -107,10 +107,7 @@ class PAGATConv(MessagePassing):
             raise AttributeError('x must be tensor!')
 
         edge_index = path[-2:] if self.flow == 'source_to_target' else path[:2]
-        if path.shape[0] > 2:
-            path_index_without_target = path[:-1] if self.flow == 'source_to_target' else path[1:]
-        else:
-            path_index_without_target = None
+        path_index_without_target = path[:-1] if self.flow == 'source_to_target' else path[1:]
 
         return self.propagate(edge_index, size=size, x=x, path_index_without_target=path_index_without_target)
 
@@ -123,7 +120,7 @@ class PAGATConv(MessagePassing):
             x_i = x[edge_index_i].view(-1, self.heads, self.out_channels)
             alpha = (torch.cat([x_i, x_path], dim=-1) * self.att).sum(dim=-1)
 
-        alpha = F.leaky_relu(alpha, self.negative_slope)
+        alpha = F.relu(alpha, self.negative_slope)
         alpha = softmax(alpha, edge_index_i, size_i)
 
         # Sample attention coefficients stochastically.

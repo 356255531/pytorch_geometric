@@ -1,3 +1,5 @@
+import numpy as np
+
 import argparse
 import torch
 import torch.nn.functional as F
@@ -19,6 +21,7 @@ parser.add_argument('--weight_decay', type=float, default=0.0005)
 parser.add_argument('--early_stopping', type=int, default=100)
 parser.add_argument('--hidden', type=int, default=8)
 parser.add_argument('--dropout', type=float, default=0.6)
+parser.add_argument('--path_dropout', type=float, default=0.6)
 parser.add_argument('--normalize_features', type=bool, default=True)
 parser.add_argument('--heads', type=int, default=8)
 parser.add_argument('--output_heads', type=int, default=1)
@@ -57,17 +60,20 @@ class AttPathEncoder(torch.nn.Module):
 class Net(torch.nn.Module):
     def __init__(self, dataset):
         super(Net, self).__init__()
+        self.path_dropout = args.path_dropout
         self.conv1 = PAGATConv(
             dataset.num_features,
             args.hidden,
             heads=args.heads,
-            dropout=args.dropout)
+            dropout=args.dropout,
+        )
         self.conv2 = PAGATConv(
-            args.hidden,
+            args.heads * args.hidden,
             dataset.num_classes,
             heads=args.output_heads,
             concat=False,
-            dropout=args.dropout)
+            dropout=args.dropout,
+        )
 
     def reset_parameters(self):
         self.conv1.reset_parameters()
@@ -75,6 +81,9 @@ class Net(torch.nn.Module):
 
     def forward(self, data):
         x, path_index = data.x, data.path_index
+        if self.training:
+            path_num = path_index.shape[1]
+            path_index = path_index[:, np.random.choice(range(path_num), int(path_num * (1 - self.path_dropout)))]
         x = F.dropout(x, p=args.dropout, training=self.training)
         x = F.elu(self.conv1(x, path_index))
         x = F.dropout(x, p=args.dropout, training=self.training)
