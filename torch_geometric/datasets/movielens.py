@@ -56,17 +56,17 @@ def create_user_pos_neg_pair(ratings, train_rating_idx, test_rating_mask, e2nid)
     u_nids = e2nid['uid'].values()
     i_nids = e2nid['iid'].values()
 
-    all_pairs = np.array([[u_nid, i_nid] for u_nid, i_nid in itertools.product(u_nids, i_nids)])
-    pos_paris = np.array([[e2nid['uid'][uid], e2nid['iid'][iid]] for uid, iid in ratings[['uid', 'iid']]])
+    all_pairs = [[u_nid, i_nid] for u_nid, i_nid in itertools.product(u_nids, i_nids)]
+    pos_paris = [[e2nid['uid'][uid], e2nid['iid'][iid]] for uid, iid in zip(ratings.uid, ratings.iid)]
 
-    train_pos_pairs = np.array([[e2nid['uid'][uid], e2nid['iid'][iid]] for uid, iid in ratings[train_rating_idx][['uid', 'iid']]])
-    test_pos_pairs = np.array([[e2nid['uid'][uid], e2nid['iid'][iid]] for uid, iid in ratings[test_rating_mask][['uid', 'iid']]])
-    train_pos_pairs_df = pd.DataFrame(data=train_pos_pairs, columns=['u_nid', 'pos_i_nid'])
-    test_pos_pairs_df = pd.DataFrame(data=test_pos_pairs, columns=['u_nid', 'pos_i_nid'])
+    train_pos_pairs = [[e2nid['uid'][uid], e2nid['iid'][iid]] for uid, iid in zip(ratings.iloc[train_rating_idx].uid, ratings.iloc[train_rating_idx].iid)]
+    test_pos_pairs = [[e2nid['uid'][uid], e2nid['iid'][iid]] for uid, iid in zip(ratings.iloc[test_rating_mask].uid, ratings.iloc[test_rating_mask].iid)]
+    train_pos_pairs_df = pd.DataFrame(data=np.array(train_pos_pairs), columns=['u_nid', 'pos_i_nid'])
+    test_pos_pairs_df = pd.DataFrame(data=np.array(test_pos_pairs), columns=['u_nid', 'pos_i_nid'])
 
-    dims = np.maximum(all_pairs.max(0), pos_paris.max(0)) + 1
-    neg_pairs =pos_paris[~np.in1d(np.ravel_multi_index(pos_paris.T, dims), np.ravel_multi_index(all_pairs.T, dims))]
-    neg_pairs_df = pd.DataFrame(data=neg_pairs, columns=['u_nid', 'neg_i_nid'])
+    neg_pairs = set([tuple(l) for l in all_pairs]).difference([tuple(l) for l in pos_paris])
+    neg_pairs = [list(i) for i in neg_pairs]
+    neg_pairs_df = pd.DataFrame(data=np.array(neg_pairs), columns=['u_nid', 'neg_i_nid'])
 
     train_user_pos_neg_pair = pd.merge(train_pos_pairs_df, neg_pairs_df, on='u_nid', how='inner').to_numpy()
     test_user_pos_neg_pair = pd.merge(test_pos_pairs_df, neg_pairs_df, on='u_nid', how='inner').to_numpy()
@@ -413,7 +413,9 @@ def convert_2_data(
             path_np = create_path(edge_index[:, train_edge_mask], step_length)
             kwargs['path_np'] = filter_path(path_np)
             kwargs['num_path'] = kwargs['path_np'].shape[1]
+
         train_user_pos_neg_pair, test_user_pos_neg_pair =  create_user_pos_neg_pair(ratings, train_rating_idx, test_rating_mask, e2nid)
+        kwargs['train_user_pos_neg_pair'], kwargs['test_user_pos_neg_pair'] = train_user_pos_neg_pair, test_user_pos_neg_pair
     else:
         if step_length:
             print('Creating path features...')
