@@ -14,6 +14,8 @@ from train_eval import random_planetoid_splits, run
 parser = argparse.ArgumentParser()
 parser.add_argument('--dataset', type=str, default='cora')
 parser.add_argument('--random_splits', type=bool, default=False)
+parser.add_argument('--device', type=str, default='cuda')
+parser.add_argument('--gpu_idx', type=str, default='0')
 parser.add_argument('--runs', type=int, default=100)
 parser.add_argument('--epochs', type=int, default=1000)
 parser.add_argument('--lr', type=float, default=0.005)
@@ -26,6 +28,13 @@ parser.add_argument('--normalize_features', type=bool, default=True)
 parser.add_argument('--heads', type=int, default=8)
 parser.add_argument('--output_heads', type=int, default=1)
 args = parser.parse_args()
+
+
+# Setup the torch device
+if not torch.cuda.is_available() or args.device == 'cpu':
+    device = torch.device('cpu')
+else:
+    device = torch.device('cuda:{}'.format(args.gpu_idx))
 
 
 def pre_transform(data):
@@ -94,4 +103,4 @@ class Net(torch.nn.Module):
 dataset = get_planetoid_dataset(args.dataset, args.normalize_features, pre_transform=pre_transform)
 permute_masks = random_planetoid_splits if args.random_splits else None
 run(dataset, Net(dataset), args.runs, args.epochs, args.lr, args.weight_decay,
-    args.early_stopping, permute_masks)
+    args.early_stopping, permute_masks, device=device)
