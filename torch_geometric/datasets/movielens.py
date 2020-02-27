@@ -2,6 +2,7 @@ import torch
 from os.path import join
 from os.path import isfile
 import numpy as np
+import pandas as pd
 import random as rd
 import tqdm
 import itertools
@@ -51,9 +52,33 @@ def reindex_df(users, items, interactions):
     return users, items, interactions
 
 
+def create_user_pos_neg_pair(ratings, train_rating_idx, test_rating_mask, e2nid):
+    u_nids = e2nid['uid'].values()
+    i_nids = e2nid['iid'].values()
+
+    all_pairs = np.array([[u_nid, i_nid] for u_nid, i_nid in itertools.product(u_nids, i_nids)])
+    pos_paris = np.array([[e2nid['uid'][uid], e2nid['iid'][iid]] for uid, iid in ratings[['uid', 'iid']]])
+
+    train_pos_pairs = np.array([[e2nid['uid'][uid], e2nid['iid'][iid]] for uid, iid in ratings[train_rating_idx][['uid', 'iid']]])
+    test_pos_pairs = np.array([[e2nid['uid'][uid], e2nid['iid'][iid]] for uid, iid in ratings[test_rating_mask][['uid', 'iid']]])
+    train_pos_pairs_df = pd.DataFrame(data=train_pos_pairs, columns=['u_nid', 'pos_i_nid'])
+    test_pos_pairs_df = pd.DataFrame(data=test_pos_pairs, columns=['u_nid', 'pos_i_nid'])
+
+    dims = np.maximum(all_pairs.max(0), pos_paris.max(0)) + 1
+    neg_pairs =pos_paris[~np.in1d(np.ravel_multi_index(pos_paris.T, dims), np.ravel_multi_index(all_pairs.T, dims))]
+    neg_pairs_df = pd.DataFrame(data=neg_pairs, columns=['u_nid', 'neg_i_nid'])
+
+    train_user_pos_neg_pair = pd.merge(train_pos_pairs_df, neg_pairs_df, on='u_nid', how='inner').to_numpy()
+    test_user_pos_neg_pair = pd.merge(test_pos_pairs_df, neg_pairs_df, on='u_nid', how='inner').to_numpy()
+
+    return train_user_pos_neg_pair, test_user_pos_neg_pair
+
+
 def convert_2_data(
         users, items, ratings,
-        train_ratio, step_length):
+        train_ratio, step_length,
+        directed=True
+):
     """
     Entitiy node include (gender, occupation, genres)
     num_nodes = num_users + num_items + num_genders + num_occupation + num_ages + num_genres + num_years + num_directors + num_actors + num_writers
@@ -62,10 +87,16 @@ def convert_2_data(
     num_items = items.shape[0]
 
     #########################  Define relationship  #########################
-    relations = [
-        'gender', 'occupation', 'age', 'genre', 'year', 'director', 'actor', 'writer', 'interact',
-        '-gender', '-occupation', '-age', '-genre', '-year', '-director', '-actor', '-writer', '-interact'
-    ]
+    if directed:
+        relations = [
+            'gender', 'occupation', 'age', 'genre', 'year', 'director', 'actor', 'writer', 'interact',
+            '-interact'
+        ]
+    else:
+        relations = [
+            'gender', 'occupation', 'age', 'genre', 'year', 'director', 'actor', 'writer', 'interact',
+            '-gender', '-occupation', '-age', '-genre', '-year', '-director', '-actor', '-writer', '-interact'
+        ]
 
     relation2index = {r: i for i, r in enumerate(relations)}
     index2relation = {i: r for r, i in relation2index.items()}
@@ -161,18 +192,18 @@ def convert_2_data(
 
         u_nid = e2nid['uid'][uid]
         gender_nid = e2nid['gender'][gender]
-        row_idx.append(u_nid)
-        col_idx.append(gender_nid)
+        row_idx.append(gender_nid)
+        col_idx.append(u_nid)
         edge_attrs.append([relations.index('gender'), -1])
 
         occ_nid = e2nid['occ'][occ]
-        row_idx.append(u_nid)
-        col_idx.append(occ_nid)
+        row_idx.append(occ_nid)
+        col_idx.append(u_nid)
         edge_attrs.append([relation2index['occupation'], -1])
 
         age_nid = age2nid[age]
-        row_idx.append(u_nid)
-        col_idx.append(age_nid)
+        row_idx.append(age_nid)
+        col_idx.append(u_nid)
         edge_attrs.append([relation2index['age'], -1])
     rating_begin += 3 * users.shape[0]
 
@@ -186,30 +217,30 @@ def convert_2_data(
 
         i_nid = e2nid['iid'][iid]
         y_nid = e2nid['year'][year]
-        row_idx.append(i_nid)
-        col_idx.append(y_nid)
+        row_idx.append(y_nid)
+        col_idx.append(i_nid)
         edge_attrs.append([relation2index['year'], -1])
         rating_begin += 1
 
         if director != '':
             d_nid = e2nid['director'][director]
-            row_idx.append(i_nid)
-            col_idx.append(d_nid)
+            row_idx.append(d_nid)
+            col_idx.append(i_nid)
             edge_attrs.append([relation2index['director'], -1])
             rating_begin += 1
 
         for actor in actors:
             if actor != '':
                 a_nid = e2nid['actor'][actor]
-                row_idx.append(i_nid)
-                col_idx.append(a_nid)
+                row_idx.append(a_nid)
+                col_idx.append(i_nid)
                 edge_attrs.append([relation2index['actor'], -1])
                 rating_begin += 1
 
         if writer != '':
             w_nid = e2nid['writer'][writer]
-            row_idx.append(i_nid)
-            col_idx.append(w_nid)
+            row_idx.append(w_nid)
+            col_idx.append(i_nid)
             edge_attrs.append([relation2index['writer'], -1])
             rating_begin += 1
 
@@ -217,8 +248,8 @@ def convert_2_data(
             if not row[genre]:
                 continue
             g_nid = e2nid['genre'][genre]
-            row_idx.append(i_nid)
-            col_idx.append(g_nid)
+            row_idx.append(g_nid)
+            col_idx.append(i_nid)
             edge_attrs.append([relation2index['genre'], -1])
             rating_begin += 1
 
@@ -227,73 +258,74 @@ def convert_2_data(
     col_idx += [e2nid['iid'][iid] for iid in ratings['iid']]
     edge_attrs += [[relation2index['interact'], i] for i in list(ratings['rating'])]
 
-    print('Creating inverse user property edges...')
-    for _, row in tqdm.tqdm(users.iterrows(), total=users.shape[0]):
-        uid = row['uid']
-        gender = row['gender']
-        occ = row['occupation']
-        age = row['age']
+    if not directed:
+        print('Creating inverse user property edges...')
+        for _, row in tqdm.tqdm(users.iterrows(), total=users.shape[0]):
+            uid = row['uid']
+            gender = row['gender']
+            occ = row['occupation']
+            age = row['age']
 
-        u_nid = e2nid['uid'][uid]
-        gender_nid = e2nid['gender'][gender]
-        row_idx.append(gender_nid)
-        col_idx.append(u_nid)
-        edge_attrs.append([relations.index('-gender'), -1])
+            u_nid = e2nid['uid'][uid]
+            gender_nid = e2nid['gender'][gender]
+            row_idx.append(u_nid)
+            col_idx.append(gender_nid)
+            edge_attrs.append([relations.index('-gender'), -1])
 
-        occ_nid = e2nid['occ'][occ]
-        row_idx.append(occ_nid)
-        col_idx.append(u_nid)
-        edge_attrs.append([relation2index['-occupation'], -1])
+            occ_nid = e2nid['occ'][occ]
+            row_idx.append(u_nid)
+            col_idx.append(occ_nid)
+            edge_attrs.append([relation2index['-occupation'], -1])
 
-        age_nid = age2nid[age]
-        row_idx.append(age_nid)
-        col_idx.append(u_nid)
-        edge_attrs.append([relation2index['-age'], -1])
+            age_nid = age2nid[age]
+            row_idx.append(u_nid)
+            col_idx.append(age_nid)
+            edge_attrs.append([relation2index['-age'], -1])
 
-    print('Creating item property edges...')
-    for _, row in tqdm.tqdm(items.iterrows(), total=items.shape[0]):
-        iid = row['iid']
-        year = row['discretized_year']
-        director = row['director']
-        actors = row['actor'].split(', ')
-        writer = row['writer']
+        print('Creating inverse item property edges...')
+        for _, row in tqdm.tqdm(items.iterrows(), total=items.shape[0]):
+            iid = row['iid']
+            year = row['discretized_year']
+            director = row['director']
+            actors = row['actor'].split(', ')
+            writer = row['writer']
 
-        i_nid = e2nid['iid'][iid]
-        y_nid = e2nid['year'][year]
-        row_idx.append(y_nid)
-        col_idx.append(i_nid)
-        edge_attrs.append([relation2index['-year'], -1])
+            i_nid = e2nid['iid'][iid]
+            y_nid = e2nid['year'][year]
+            row_idx.append(i_nid)
+            col_idx.append(y_nid)
+            edge_attrs.append([relation2index['-year'], -1])
 
-        if director != '':
-            d_nid = e2nid['director'][director]
-            row_idx.append(d_nid)
-            col_idx.append(i_nid)
-            edge_attrs.append([relation2index['-director'], -1])
+            if director != '':
+                d_nid = e2nid['director'][director]
+                row_idx.append(i_nid)
+                col_idx.append(d_nid)
+                edge_attrs.append([relation2index['-director'], -1])
 
-        for actor in actors:
-            if actor != '':
-                a_nid = e2nid['actor'][actor]
-                row_idx.append(a_nid)
-                col_idx.append(i_nid)
-                edge_attrs.append([relation2index['-actor'], -1])
+            for actor in actors:
+                if actor != '':
+                    a_nid = e2nid['actor'][actor]
+                    row_idx.append(i_nid)
+                    col_idx.append(a_nid)
+                    edge_attrs.append([relation2index['-actor'], -1])
 
-        if writer != '':
-            w_nid = e2nid['writer'][writer]
-            row_idx.append(w_nid)
-            col_idx.append(i_nid)
-            edge_attrs.append([relation2index['-writer'], -1])
+            if writer != '':
+                w_nid = e2nid['writer'][writer]
+                row_idx.append(i_nid)
+                col_idx.append(w_nid)
+                edge_attrs.append([relation2index['-writer'], -1])
 
-        for genre in genres:
-            if not row[genre]:
-                continue
-            g_nid = e2nid['genre'][genre]
-            row_idx.append(g_nid)
-            col_idx.append(i_nid)
-            edge_attrs.append([relation2index['-genre'], -1])
+            for genre in genres:
+                if not row[genre]:
+                    continue
+                g_nid = e2nid['genre'][genre]
+                row_idx.append(i_nid)
+                col_idx.append(g_nid)
+                edge_attrs.append([relation2index['-genre'], -1])
 
-    print('Creating rating property edges...')
-    col_idx += [e2nid['uid'][uid] for uid in ratings['uid']]
+    print('Creating inverse rating property edges...')
     row_idx += [e2nid['iid'][iid] for iid in ratings['iid']]
+    col_idx += [e2nid['uid'][uid] for uid in ratings['uid']]
     edge_attrs += [[relation2index['-interact'], i] for i in list(ratings['rating'])]
 
     row_idx = [int(idx) for idx in row_idx]
@@ -308,15 +340,25 @@ def convert_2_data(
     #########################  Build masks  #########################
     print('Building masks...')
     rating_mask = torch.ones(ratings.shape[0], dtype=torch.bool)
-    rating_edge_mask = torch.cat(
-        (
-            torch.zeros(rating_begin, dtype=torch.bool),
-            rating_mask,
-            torch.zeros(rating_begin, dtype=torch.bool),
-            rating_mask
-        ),
-        dim=0
-    )
+    if directed:
+        rating_edge_mask = torch.cat(
+            (
+                torch.zeros(rating_begin, dtype=torch.bool),
+                rating_mask,
+                rating_mask
+            ),
+            dim=0
+        )
+    else:
+        rating_edge_mask = torch.cat(
+            (
+                torch.zeros(rating_begin, dtype=torch.bool),
+                rating_mask,
+                torch.zeros(rating_begin, dtype=torch.bool),
+                rating_mask
+            ),
+            dim=0
+        )
 
     kwargs = {
         'num_nodes': num_nodes, 'edge_index': edge_index, 'edge_attr': edge_attrs,
@@ -329,33 +371,49 @@ def convert_2_data(
     if train_ratio is not None:
         train_rating_mask = torch.zeros(ratings.shape[0], dtype=torch.bool)
         test_rating_mask = torch.zeros(ratings.shape[0], dtype=torch.bool)
-        train_rating_idx = rd.sample([i for i in range(ratings.shape[0])], int(ratings.shape[0] * train_ratio))
+        train_rating_idx = np.random.choice(range(ratings.shape[0]), int(ratings.shape[0] * train_ratio))
         test_rating_idx = list(set(range(ratings.shape[0])) - set(train_rating_idx))
         train_rating_mask[train_rating_idx] = 1
         test_rating_mask[test_rating_idx] = 1
 
-        train_edge_mask = torch.cat(
-            (
-                torch.ones(rating_begin, dtype=torch.bool),
-                train_rating_mask,
-                torch.ones(rating_begin, dtype=torch.bool),
-                train_rating_mask)
-        )
+        if directed:
+            train_edge_mask = torch.cat(
+                (
+                    torch.ones(rating_begin, dtype=torch.bool),
+                    train_rating_mask,
+                    train_rating_mask)
+            )
 
-        test_edge_mask = torch.cat(
-            (
-                torch.zeros(rating_begin, dtype=torch.bool),
-                test_rating_mask,
-                torch.zeros(rating_begin, dtype=torch.bool),
-                test_rating_mask)
-        )
+            test_edge_mask = torch.cat(
+                (
+                    torch.zeros(rating_begin, dtype=torch.bool),
+                    test_rating_mask,
+                    test_rating_mask)
+            )
+        else:
+            train_edge_mask = torch.cat(
+                (
+                    torch.ones(rating_begin, dtype=torch.bool),
+                    train_rating_mask,
+                    torch.ones(rating_begin, dtype=torch.bool),
+                    train_rating_mask)
+            )
+
+            test_edge_mask = torch.cat(
+                (
+                    torch.zeros(rating_begin, dtype=torch.bool),
+                    test_rating_mask,
+                    torch.zeros(rating_begin, dtype=torch.bool),
+                    test_rating_mask)
+            )
         kwargs['train_edge_mask'] = train_edge_mask
         kwargs['test_edge_mask'] = test_edge_mask
         if step_length:
             print('Creating path features...')
-            path = create_path(edge_index[:, train_edge_mask], step_length)
-            kwargs['train_path'] = filter_path(path)
-            kwargs['num_path'] = kwargs['train_path'].shape[1]
+            path_np = create_path(edge_index[:, train_edge_mask], step_length)
+            kwargs['path_np'] = filter_path(path_np)
+            kwargs['num_path'] = kwargs['path_np'].shape[1]
+        train_user_pos_neg_pair, test_user_pos_neg_pair =  create_user_pos_neg_pair(ratings, train_rating_idx, test_rating_mask, e2nid)
     else:
         if step_length:
             print('Creating path features...')
@@ -381,7 +439,7 @@ class MovieLens(InMemoryDataset):
         self.num_core = kwargs.get('num_core', 10)
         self.step_length = kwargs.get('step_length', 2)
         self.implicit = kwargs.get('implicit', True)
-        self.train_ratio = kwargs.get('train_ratio', False)
+        self.train_ratio = kwargs.get('train_ratio', None)
         self.debug = kwargs.get('debug', False)
         self.seed = kwargs.get('seed', None)
         self.suffix = self.build_suffix()
@@ -515,7 +573,7 @@ if __name__ == '__main__':
     root = osp.join('.', 'tmp', 'ml')
     name = '1m'
     debug = 0.01
-    dataset = MovieLens(root=root, name='1m', debug=debug)
+    dataset = MovieLens(root=root, name='1m', debug=debug, train_ratio=0.8)
 
     import pdb
     pdb.set_trace()

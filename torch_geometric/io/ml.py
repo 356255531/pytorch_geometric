@@ -111,12 +111,9 @@ def read_ml(dir, processed=False):
                     movie_info_dic = json.loads(r.text)
                 except:
                     movie_info_dic = dict()
+
             director = movie_info_dic.get('Director', '')
             actor = movie_info_dic.get('Actors', '')
-            if actor == '':
-                print('*************')
-            else:
-                print(actor)
             writer = movie_info_dic.get('Writer', '')
 
             director_list.append(director)
