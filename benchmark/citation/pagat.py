@@ -8,8 +8,8 @@ from torch_geometric.nn import PAGATConv
 from torch_geometric.nn.inits import glorot
 from torch_geometric.utils import create_path, remove_self_loops
 
-from datasets import get_planetoid_dataset
-from train_eval import random_planetoid_splits, run
+from .datasets import get_planetoid_dataset
+from .train_eval import random_planetoid_splits, run
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--dataset', type=str, default='cora')

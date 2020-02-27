@@ -99,18 +99,26 @@ def read_ml(dir, processed=False):
             if i in range(3000, 4000):
                 apikey = key4
 
-            movie_url = "http://www.omdbapi.com/?" + "t=" + title + "&y=" + str(year) + "&apikey=" + apikey
-            # print('i=' + str(i) + ',apikey=' + apikey )
+
             try:
+                movie_url = "http://www.omdbapi.com/?" + "t=" + title + "&y=" + str(year) + "&apikey=" + apikey
                 r = requests.get(movie_url)
                 movie_info_dic = json.loads(r.text)
-                director = movie_info_dic.get('Director', '')
-                actor = movie_info_dic.get('Actors', '')
-                writer = movie_info_dic.get('Writer', '')
             except:
-                director = ''
-                actor = ''
-                writer = ''
+                try:
+                    movie_url = "http://www.omdbapi.com/?" + "t=" + title + "&apikey=" + apikey
+                    r = requests.get(movie_url)
+                    movie_info_dic = json.loads(r.text)
+                except:
+                    movie_info_dic = dict()
+            director = movie_info_dic.get('Director', '')
+            actor = movie_info_dic.get('Actors', '')
+            if actor == '':
+                print('*************')
+            else:
+                print(actor)
+            writer = movie_info_dic.get('Writer', '')
+
             director_list.append(director)
             actor_list.append(actor)
             writer_list.append(writer)
