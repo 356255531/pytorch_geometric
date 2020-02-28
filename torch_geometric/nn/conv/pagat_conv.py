@@ -128,15 +128,20 @@ class PAGATConv(MessagePassing):
 
         return x_path * alpha.view(-1, self.heads, 1)
 
-    def update(self, aggr_out):
+    def update(self, aggr_out, x, edge_index_i):
         if self.concat is True:
+            x = x.view(-1, self.heads * self.out_channels)
             aggr_out = aggr_out.view(-1, self.heads * self.out_channels)
         else:
             aggr_out = aggr_out.mean(dim=1)
+            x = x.mean(dim=1)
 
         if self.bias is not None:
             aggr_out = aggr_out + self.bias
-        return aggr_out
+
+        index = torch.sort(torch.unique(edge_index_i), descending=False)
+        x[index] = aggr_out[index]
+        return x
 
     def __repr__(self):
         return '{}({}, {}, heads={})'.format(self.__class__.__name__,

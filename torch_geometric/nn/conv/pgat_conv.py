@@ -52,7 +52,7 @@ class PGATConv(MessagePassing):
                  in_channels, out_channels,
                  transformer_encoder_layer_size=3,
                  transformer_encoder_hidden_size=16,
-                 path_heads=2, node_heads=2, concat=True,
+                 path_heads=2, node_heads=2,
                  negative_slope=0.2,
                  pgat_dropout=0, transformer_dropout=0,
                  transformer_activation='relu',
@@ -63,7 +63,6 @@ class PGATConv(MessagePassing):
         self.out_channels = out_channels
         self.path_heads = path_heads
         self.node_heads = node_heads
-        self.concat = concat
         self.negative_slope = negative_slope
         self.pgat_dropout = pgat_dropout
 
@@ -81,9 +80,7 @@ class PGATConv(MessagePassing):
             transformer_encoder_layer, transformer_encoder_layer_size, encoder_norm)
         self.att = Parameter(torch.Tensor(1, path_heads, 2 * out_channels))
 
-        if bias and concat:
-            self.bias = Parameter(torch.Tensor(path_heads * out_channels))
-        elif bias and not concat:
+        if bias:
             self.bias = Parameter(torch.Tensor(out_channels))
         else:
             self.register_parameter('bias', None)
@@ -134,15 +131,13 @@ class PGATConv(MessagePassing):
 
         return x_path * alpha.view(-1, self.path_heads, 1)
 
-    def update(self, aggr_out):
-        if self.concat is True:
-            aggr_out = aggr_out.view(-1, self.path_heads * self.out_channels)
-        else:
-            aggr_out = aggr_out.mean(dim=1)
-
+    def update(self, aggr_out, x, edge_index_i):
+        aggr_out = aggr_out.mean(dim=1)
         if self.bias is not None:
             aggr_out = aggr_out + self.bias
-        return aggr_out
+
+        x[edge_index_i] = aggr_out
+        return x
 
     def __repr__(self):
         return '{}({}, {}, path_heads={})'.format(self.__class__.__name__,
