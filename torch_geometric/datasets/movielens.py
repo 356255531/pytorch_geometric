@@ -420,8 +420,8 @@ def convert_2_data(
         if step_length:
             print('Creating path features...')
             path = create_path(edge_index, step_length)
-            kwargs['path'] = filter_path(path)
-            kwargs['num_path'] = kwargs['path'].shape[1]
+            kwargs['path_np'] = filter_path(path)
+            kwargs['num_path'] = kwargs['path_np'].shape[1]
 
     return Data(**kwargs)
 
