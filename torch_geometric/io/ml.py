@@ -123,6 +123,8 @@ def read_ml(dir, processed=False):
         movies['director'] = director_list
         movies['actor'] = actor_list
         movies['writer'] = writer_list
+        import pdb
+        pdb.set_trace()
 
         ratings = []
         with open(join(dir, 'ratings.dat')) as f:

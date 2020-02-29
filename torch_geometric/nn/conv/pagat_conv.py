@@ -126,20 +126,19 @@ class PAGATConv(MessagePassing):
         # Sample attention coefficients stochastically.
         alpha = F.dropout(alpha, p=self.dropout, training=self.training)
 
-        return x_path * alpha.view(-1, self.heads, 1)
+        return x_path * alpha.view(-1, self.heads, 1), alpha.mean(dim=-1)
 
     def update(self, aggr_out, x, edge_index_i):
         if self.concat is True:
             x = x.view(-1, self.heads * self.out_channels)
             aggr_out = aggr_out.view(-1, self.heads * self.out_channels)
         else:
-            aggr_out = aggr_out.mean(dim=1)
-            x = x.mean(dim=1)
+            aggr_out = aggr_out.view(-1, self.heads * self.out_channels).mean(dim=1)
 
         if self.bias is not None:
             aggr_out = aggr_out + self.bias
 
-        index = torch.sort(torch.unique(edge_index_i), descending=False)
+        index, _ = torch.sort(torch.unique(edge_index_i), descending=False)
         x[index] = aggr_out[index]
         return x
 

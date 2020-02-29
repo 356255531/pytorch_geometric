@@ -168,6 +168,8 @@ class MessagePassing(torch.nn.Module):
 
         msg_kwargs = self.__distribute__(self.__msg_params__, kwargs)
         out = self.message(**msg_kwargs)
+        if isinstance(out, tuple):
+            out, att = out
 
         aggr_kwargs = self.__distribute__(self.__aggr_params__, kwargs)
         out = self.aggregate(out, **aggr_kwargs)
@@ -175,6 +177,8 @@ class MessagePassing(torch.nn.Module):
         update_kwargs = self.__distribute__(self.__update_params__, kwargs)
         out = self.update(out, **update_kwargs)
 
+        if 'att' in locals():
+            out = out, att
         return out
 
     def message(self, x_j):  # pragma: no cover
