@@ -515,25 +515,25 @@ class MovieLens(InMemoryDataset):
             items = items[items.iid.isin(ratings['iid'])]
 
             # Drop the unfrequent writer, actor and directors
-            writers = items.writer.values
-            writers_dict = Counter(writers)
-            unique_writers = {k: v for k, v in writers_dict.items() if v > self.num_feat_core}.keys()
-
-            writers = [writer if writer in unique_writers else "" for writer in writers]
-            directors = items.director.values
-            directors_dict = Counter(directors)
-            unique_directors = {k: v for k, v in directors_dict.items() if v > self.num_feat_core}.keys()
-            directors = [director if director in unique_directors else "" for director in directors ]
-            actor_strs = [actor_str for actor_str in items.actor.values if actor_str != '']
-            actors = [actor_str.split(', ') for actor_str in actor_strs]
-            actors = list(itertools.chain.from_iterable(actors))
-            actors_dict = Counter(actors)
-            unique_actors = {k: v for k, v in actors_dict.items() if v > self.num_feat_core}.keys()
-            actor_strs = [[single_actor_str for single_actor_str in actor_str.split(', ') if single_actor_str in unique_actors] for actor_str in actor_strs]
-            actor_strs = [', '.join(actor_str) for actor_str in actor_strs]
-            items['writer'] = writers
-            items['director'] = directors
-            items['actor'] = actor_strs
+            # import pdb
+            # pdb.set_trace()
+            # # TODO writer regex to detect writers
+            # unique_writers = []
+            # writers = [writer if writer in unique_writers else "" for writer in writers]
+            # directors = items.director.values
+            # directors_dict = Counter(directors)
+            # unique_directors = {k: v for k, v in directors_dict.items() if v > self.num_feat_core}.keys()
+            # directors = [director if director in unique_directors else "" for director in directors ]
+            # actor_strs = [actor_str for actor_str in items.actor.values if actor_str != '']
+            # actors = [actor_str.split(', ') for actor_str in actor_strs]
+            # actors = list(itertools.chain.from_iterable(actors))
+            # actors_dict = Counter(actors)
+            # unique_actors = {k: v for k, v in actors_dict.items() if v > self.num_feat_core}.keys()
+            # actor_strs = [[single_actor_str for single_actor_str in actor_str.split(', ') if single_actor_str in unique_actors] for actor_str in actor_strs]
+            # actor_strs = [', '.join(actor_str) for actor_str in actor_strs]
+            items['writer'] = ""
+            items['director'] = ""
+            items['actor'] = ""
 
             users, items, ratings = reindex_df(users, items, ratings)
             save_df(users, join(self.processed_dir, 'users.pkl'))
