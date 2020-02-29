@@ -518,11 +518,12 @@ class MovieLens(InMemoryDataset):
             writers = items.writer.values
             writers_dict = Counter(writers)
             unique_writers = {k: v for k, v in writers_dict.items() if v > self.num_feat_core}.keys()
-            writers = [writer for writer in writers if writer in unique_writers]
+
+            writers = [writer if writer in unique_writers else "" for writer in writers]
             directors = items.director.values
             directors_dict = Counter(directors)
             unique_directors = {k: v for k, v in directors_dict.items() if v > self.num_feat_core}.keys()
-            directors = [director for director in directors if director in unique_directors]
+            directors = [director if director in unique_directors else "" for director in directors ]
             actor_strs = [actor_str for actor_str in items.actor.values if actor_str != '']
             actors = [actor_str.split(', ') for actor_str in actor_strs]
             actors = list(itertools.chain.from_iterable(actors))
