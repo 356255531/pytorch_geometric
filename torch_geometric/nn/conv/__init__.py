@@ -25,7 +25,6 @@ from .ppf_conv import PPFConv
 from .feast_conv import FeaStConv
 from .hypergraph_conv import HypergraphConv
 from .pagat_conv import PAGATConv
-from .pgat_conv import PGATConv
 
 
 __all__ = [
@@ -58,5 +57,4 @@ __all__ = [
     'FeaStConv',
     'HypergraphConv',
     'PAGATConv',
-    'PGATConv'
 ]

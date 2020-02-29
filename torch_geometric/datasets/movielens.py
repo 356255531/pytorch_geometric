@@ -439,6 +439,7 @@ class MovieLens(InMemoryDataset):
         self.name = name.lower()
         assert self.name in ['1m']
         self.num_core = kwargs.get('num_core', 10)
+        self.num_feat_core = kwargs.get('num_core', 5)
         self.step_length = kwargs.get('step_length', 2)
         self.implicit = kwargs.get('implicit', True)
         self.train_ratio = kwargs.get('train_ratio', None)
@@ -516,17 +517,17 @@ class MovieLens(InMemoryDataset):
             # Drop the unfrequent writer, actor and directors
             writers = items.writer.values
             writers_dict = Counter(writers)
-            unique_writers = {k: v for k, v in writers_dict.items() if v > self.num_core}.keys()
-            writers = [writer if writer in unique_writers else '' for writer in writers]
+            unique_writers = {k: v for k, v in writers_dict.items() if v > self.num_feat_core}.keys()
+            writers = [writer for writer in writers if writer in unique_writers]
             directors = items.director.values
             directors_dict = Counter(directors)
-            unique_directors = {k: v for k, v in directors_dict.items() if v > self.num_core}.keys()
-            directors = [director if director in unique_directors else '' for director in directors]
-            actor_strs = [actor_str for actor_str in items.actor.values]
+            unique_directors = {k: v for k, v in directors_dict.items() if v > self.num_feat_core}.keys()
+            directors = [director for director in directors if director in unique_directors]
+            actor_strs = [actor_str for actor_str in items.actor.values if actor_str != '']
             actors = [actor_str.split(', ') for actor_str in actor_strs]
             actors = list(itertools.chain.from_iterable(actors))
             actors_dict = Counter(actors)
-            unique_actors = {k: v for k, v in actors_dict.items() if v > self.num_core}.keys()
+            unique_actors = {k: v for k, v in actors_dict.items() if v > self.num_feat_core}.keys()
             actor_strs = [[single_actor_str for single_actor_str in actor_str.split(', ') if single_actor_str in unique_actors] for actor_str in actor_strs]
             actor_strs = [', '.join(actor_str) for actor_str in actor_strs]
             items['writer'] = writers
@@ -539,12 +540,9 @@ class MovieLens(InMemoryDataset):
             save_df(ratings, join(self.processed_dir, 'ratings.pkl'))
 
         if self.debug:
-            most_popular_movie_iids = ratings.sort_values(by='movie_count', ascending=False).iid.drop_duplicates()
-            most_popular_movie_iids = most_popular_movie_iids[:int(most_popular_movie_iids.shape[0] * self.debug)]
-            items = items[items.iid.isin(most_popular_movie_iids)]
-            ratings = ratings[ratings.iid.isin(most_popular_movie_iids)]
-            uids = ratings.uid.drop_duplicates()
-            users = users[users.uid.isin(uids)]
+            ratings = ratings.iloc[np.random.choice(range(ratings.shape[0]), int(self.debug * ratings.shape[0]))]
+            users = users[users.uid.isin(ratings.uid)]
+            items = items[items.iid.isin(ratings.iid)]
 
         data = convert_2_data(users, items, ratings, self.train_ratio, self.step_length)
 
@@ -577,5 +575,3 @@ if __name__ == '__main__':
     debug = 0.01
     dataset = MovieLens(root=root, name='1m', debug=debug, train_ratio=0.8)
 
-    import pdb
-    pdb.set_trace()
