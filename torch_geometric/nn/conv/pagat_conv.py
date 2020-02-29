@@ -133,7 +133,8 @@ class PAGATConv(MessagePassing):
             x = x.view(-1, self.heads * self.out_channels)
             aggr_out = aggr_out.view(-1, self.heads * self.out_channels)
         else:
-            aggr_out = aggr_out.view(-1, self.heads * self.out_channels).mean(dim=1)
+            x = x.view(-1, self.heads, self.out_channels).mean(dim=1)
+            aggr_out = aggr_out.view(-1, self.heads, self.out_channels).mean(dim=1)
 
         if self.bias is not None:
             aggr_out = aggr_out + self.bias
