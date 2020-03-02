@@ -116,6 +116,10 @@ def read_ml(dir, processed=False):
             actor = movie_info_dic.get('Actors', '')
             writer = movie_info_dic.get('Writer', '')
 
+            director = ', '.join([single_director.split(' (')[0] for single_director in director.split(', ')])
+            actor = ', '.join([single_actor.split(' (')[0] for single_actor in actor.split(', ')])
+            writer = ', '.join([single_writer.split(' (')[0] for single_writer in writer.split(', ')])
+
             director_list.append(director)
             actor_list.append(actor)
             writer_list.append(writer)
