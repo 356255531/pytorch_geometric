@@ -34,8 +34,8 @@ def reindex_df(users, items, interactions):
     uids = np.arange(num_users)
     iids = np.arange(num_movies)
 
-    users.loc[:, 'uid'] = uids
-    items.loc[:, 'iid'] = iids
+    users['uid'] = uids
+    items['iid'] = iids
 
     raw_uid2uid = {raw_uid: uid for raw_uid, uid in zip(raw_uids, uids)}
     raw_iid2iid = {raw_iid: iid for raw_iid, iid in zip(raw_iids, iids)}
@@ -46,8 +46,8 @@ def reindex_df(users, items, interactions):
     rating_uids = [raw_uid2uid[rating_uid] for rating_uid in rating_uids]
     print('reindex item id of ratings...')
     rating_iids = [raw_iid2iid[rating_iid] for rating_iid in rating_iids]
-    interactions.loc[:, 'uid'] = rating_uids
-    interactions.loc[:, 'iid'] = rating_iids
+    interactions['uid'] = rating_uids
+    interactions['iid'] = rating_iids
 
     return users, items, interactions
 
@@ -72,6 +72,18 @@ def create_user_pos_neg_pair(ratings, train_rating_idx, test_rating_mask, e2nid)
     test_user_pos_neg_pair = pd.merge(test_pos_pairs_df, neg_pairs_df, on='u_nid', how='inner').to_numpy()
 
     return train_user_pos_neg_pair, test_user_pos_neg_pair
+
+
+def drop_infrequent_concept(df, concept_name, num_occs):
+    concept_strs = df[concept_name]
+    duplicated_concept = [concept_str.split(', ') for concept_str in concept_strs]
+    duplicated_concept = list(itertools.chain.from_iterable(duplicated_concept))
+    writer_counter_dict = Counter(duplicated_concept)
+    unique_concept = [k for k, v in writer_counter_dict.items() if v > num_occs]
+    concept_strs = [', '.join([concept for concept in concept_str.split(', ') if concept in unique_concept]) for concept_str
+                   in concept_strs]
+    df[concept_name] = concept_strs
+    return df
 
 
 def convert_2_data(
@@ -115,7 +127,7 @@ def convert_2_data(
     print(genres)
     num_genres = len(genres)
 
-    years = list(np.unique(items.discretized_year.to_numpy()))
+    years = list(items.discretized_year.unique())
     num_years = len(years)
 
     directors = list(items.director.unique())
@@ -515,27 +527,9 @@ class MovieLens(InMemoryDataset):
             items = items[items.iid.isin(ratings['iid'])]
 
             # Drop the unfrequent writer, actor and directors
-            writers_str = items['writer']
-            writers = list(itertools.chain.from_iterable([writer_str.split(', ') for writer_str in writers_str]))
-            writers_dict = Counter(writers)
-            unique_writers = [k for k, v in writers_dict.items() if v > self.num_feat_core]
-            writers_str = [', '.join([writer for writer in writer_str.split(', ') if writer in unique_writers]) for writer_str in writers_str]
-            directors_str = items['director']
-            directors = list(itertools.chain.from_iterable([director_str.split(', ') for director_str in directors_str]))
-            directors_dict = Counter(directors)
-            writers = list(itertools.chain.from_iterable([writer_str.split(', ') for writer_str in writers_str]))
-            unique_directors = {k: v for k, v in directors_dict.items() if v > self.num_feat_core}.keys()
-            directors = [director if director in unique_directors else "" for director in directors ]
-            actor_strs = [actor_str for actor_str in items.actor.values if actor_str != '']
-            actors = [actor_str.split(', ') for actor_str in actor_strs]
-            actors = list(itertools.chain.from_iterable(actors))
-            actors_dict = Counter(actors)
-            unique_actors = {k: v for k, v in actors_dict.items() if v > self.num_feat_core}.keys()
-            actor_strs = [[single_actor_str for single_actor_str in actor_str.split(', ') if single_actor_str in unique_actors] for actor_str in actor_strs]
-            actor_strs = [', '.join(actor_str) for actor_str in actor_strs]
-            items['writer'] = writers_str
-            items['director'] = ""
-            items['actor'] = ""
+            items = drop_infrequent_concept(items, 'writer', self.num_feat_core)
+            items = drop_infrequent_concept(items, 'director', self.num_feat_core)
+            items = drop_infrequent_concept(items, 'actor', self.num_feat_core)
 
             users, items, ratings = reindex_df(users, items, ratings)
             save_df(users, join(self.processed_dir, 'users.pkl'))
