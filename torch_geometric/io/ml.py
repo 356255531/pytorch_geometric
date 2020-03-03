@@ -1,34 +1,9 @@
 import re
-import numpy as np
 import pandas as pd
 from os.path import join
 import requests
 import json
 import tqdm
-
-apikey = 'e760129c'
-
-
-def get_director_actors(movie_title, movie_year):
-    movie_url = "http://www.omdbapi.com/?" + "t=" + movie_title + "&y=" + movie_year + "&apikey=" + apikey
-    try:
-        r = requests.get(movie_url)
-        movie_info_dic = json.loads(r.text)
-    except:
-        return '', ''
-
-    director = movie_info_dic.get('Director', '')
-    actors = movie_info_dic.get('Actors', '')
-
-    return director, actors
-
-
-def get_poster(movie_title, movie_year):
-    movie_url = "http://www.omdbapi.com/?" + "t=" + movie_title + "&y=" + movie_year + "&apikey=" + apikey
-    r = requests.get(movie_url)
-    movie_info_dic = json.loads(r.text)
-    poster = movie_info_dic['Poster']
-    return poster
 
 
 def read_ml(dir, processed=False):
@@ -84,8 +59,8 @@ def read_ml(dir, processed=False):
         key3 = '8403a97b'
         key4 = '192c6b0e'
 
-        director_list = []
-        actor_list = []
+        directors_strs = []
+        actors_strs = []
         writer_list = []
 
         pbar = tqdm.tqdm(zip(movies.title, movies.year), total=movies.shape[0])
@@ -115,18 +90,15 @@ def read_ml(dir, processed=False):
             director = movie_info_dic.get('Director', '')
             actor = movie_info_dic.get('Actors', '')
             writer = movie_info_dic.get('Writer', '')
+            # poster = movie_info_dic.get('Poster', None)
 
-            director = ', '.join([single_director.split(' (')[0] for single_director in director.split(', ')])
-            actor = ', '.join([single_actor.split(' (')[0] for single_actor in actor.split(', ')])
-            writer = ', '.join([single_writer.split(' (')[0] for single_writer in writer.split(', ')])
-
-            director_list.append(director)
-            actor_list.append(actor)
+            directors_strs.append(director)
+            actors_strs.append(actor)
             writer_list.append(writer)
 
-        movies['director'] = director_list
-        movies['actor'] = actor_list
-        movies['writer'] = writer_list
+        movies['directors'] = directors_strs
+        movies['actors'] = actors_strs
+        movies['writers'] = writer_list
 
         ratings = []
         with open(join(dir, 'ratings.dat')) as f:

@@ -74,14 +74,19 @@ def create_user_pos_neg_pair(ratings, train_rating_idx, test_rating_mask, e2nid)
     return train_user_pos_neg_pair, test_user_pos_neg_pair
 
 
-def drop_infrequent_concept(df, concept_name, num_occs):
-    concept_strs = df[concept_name]
+def drop_infrequent_concept_from_str(df, concept_name, num_occs):
+    def filter_concept_str(concept_str):
+        return ', '.join([single_concept.split(' (')[0] for single_concept in concept_str.split(', ')])
+    concept_strs = [filter_concept_str(concept_str) for concept_str in df[concept_name]]
     duplicated_concept = [concept_str.split(', ') for concept_str in concept_strs]
     duplicated_concept = list(itertools.chain.from_iterable(duplicated_concept))
     writer_counter_dict = Counter(duplicated_concept)
+    del writer_counter_dict['']
     unique_concept = [k for k, v in writer_counter_dict.items() if v > num_occs]
-    concept_strs = [', '.join([concept for concept in concept_str.split(', ') if concept in unique_concept]) for concept_str
-                   in concept_strs]
+    concept_strs = [
+        ', '.join([concept for concept in concept_str.split(', ') if concept in unique_concept])
+        for concept_str in concept_strs
+    ]
     df[concept_name] = concept_strs
     return df
 
@@ -95,6 +100,13 @@ def convert_2_data(
     Entitiy node include (gender, occupation, genres)
     num_nodes = num_users + num_items + num_genders + num_occupation + num_ages + num_genres + num_years + num_directors + num_actors + num_writers
     """
+    def get_concept_num_from_str(df, concept_name):
+        concept_strs = [concept_str.split(', ') for concept_str in df[concept_name]]
+        concepts = set(itertools.chain.from_iterable(concept_strs))
+        concepts.remove('')
+        num_concepts = len(concepts)
+        return list(concepts), num_concepts
+
     num_users = users.shape[0]
     num_items = items.shape[0]
 
@@ -124,23 +136,14 @@ def convert_2_data(
     num_ages = len(ages)
 
     genres = list(items.keys()[4:21])
-    print(genres)
     num_genres = len(genres)
 
     years = list(items.discretized_year.unique())
     num_years = len(years)
 
-    directors = list(items.director.unique())
-    num_directors = len(directors)
-
-    actors = [actor_str.split(', ') for actor_str in items.actor.values]
-    actors = list(set(itertools.chain.from_iterable(actors)))
-    actors = [actor for actor in actors if actor != '']
-    num_actors = len(actors)
-
-    writers = list(items.writer.unique())
-    writers = [writer for writer in writers if writer != '']
-    num_writers = len(writers)
+    directors, num_directors = get_concept_num_from_str(items, 'director')
+    actors, num_actors = get_concept_num_from_str(items, 'actor')
+    writers, num_writers = get_concept_num_from_str(items, 'writer')
 
     #########################  Define number of entities  #########################
     num_nodes = num_users + num_items + num_genders + num_occupations + num_ages + num_genres + num_years + \
@@ -148,10 +151,10 @@ def convert_2_data(
 
     #########################  Define entities to node id map  #########################
     acc = 0
-    uid2nid = {uid: i + acc for i, uid in enumerate(users['uid'].values)}
-    nid2e = {i + acc: ('uid', uid) for i, uid in enumerate(users['uid'].values)}
+    uid2nid = {uid: i + acc for i, uid in enumerate(users['uid'])}
+    nid2e = {i + acc: ('uid', uid) for i, uid in enumerate(users['uid'])}
     acc += users.shape[0]
-    iid2nid = {iid: i + acc for i, iid in enumerate(items['iid'].values)}
+    iid2nid = {iid: i + acc for i, iid in enumerate(items['iid'])}
     for i, iid in enumerate(items['iid'].values):
         nid2e[i + acc] = ('iid', iid)
     acc += items.shape[0]
@@ -223,9 +226,9 @@ def convert_2_data(
     for _, row in tqdm.tqdm(items.iterrows(), total=items.shape[0]):
         iid = row['iid']
         year = row['discretized_year']
-        director = row['director']
-        actors = row['actor'].split(', ')
-        writer = row['writer']
+        directors = row['directors'].split(', ')
+        actors = row['actors'].split(', ')
+        writers = row['writers'].split(', ')
 
         i_nid = e2nid['iid'][iid]
         y_nid = e2nid['year'][year]
@@ -511,6 +514,7 @@ class MovieLens(InMemoryDataset):
             items = items.drop_duplicates()
             ratings = ratings.drop_duplicates()
 
+            # Compute the movie and user counts
             item_count = ratings['iid'].value_counts()
             user_count = ratings['uid'].value_counts()
             item_count.name = 'movie_count'
@@ -518,18 +522,18 @@ class MovieLens(InMemoryDataset):
             ratings = ratings.join(item_count, on='iid')
             ratings = ratings.join(user_count, on='uid')
 
-            # delete ratings have movie and user count less than self.num_core
+            # Remove infrequent users and item in ratings
             ratings = ratings[ratings.movie_count > self.num_core]
             ratings = ratings[ratings.user_count > self.num_core]
 
-            # drop users and movies which do not exist in ratings
+            # Sync the user and item dataframe
             users = users[users.uid.isin(ratings['uid'])]
             items = items[items.iid.isin(ratings['iid'])]
 
-            # Drop the unfrequent writer, actor and directors
-            items = drop_infrequent_concept(items, 'writer', self.num_feat_core)
-            items = drop_infrequent_concept(items, 'director', self.num_feat_core)
-            items = drop_infrequent_concept(items, 'actor', self.num_feat_core)
+            # Drop the infrequent writer, actor and directors
+            items = drop_infrequent_concept_from_str(items, 'writer', self.num_feat_core)
+            items = drop_infrequent_concept_from_str(items, 'director', self.num_feat_core)
+            items = drop_infrequent_concept_from_str(items, 'actor', self.num_feat_core)
 
             users, items, ratings = reindex_df(users, items, ratings)
             save_df(users, join(self.processed_dir, 'users.pkl'))
