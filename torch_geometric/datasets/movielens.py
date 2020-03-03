@@ -51,26 +51,24 @@ def reindex_df(users, items, interactions):
     return users, items, interactions
 
 
-def create_user_pos_neg_pair(ratings, train_rating_idx, test_rating_mask, e2nid):
-    u_nids = e2nid['uid'].values()
-    i_nids = e2nid['iid'].values()
+def split_train_test_pos_neg_map(ratings, train_rating_idx, test_rating_mask, e2nid):
+    uids = e2nid['uid'].keys()
+    u_nids = [e2nid['uid'][uid] for uid in uids]
+    iids = e2nid['iid'].keys()
+    n_nids = [e2nid['iid'][iid] for iid in iids]
 
-    all_pairs = [[u_nid, i_nid] for u_nid, i_nid in itertools.product(u_nids, i_nids)]
-    pos_paris = [[e2nid['uid'][uid], e2nid['iid'][iid]] for uid, iid in zip(ratings.uid, ratings.iid)]
+    get_pos_i_nid_with_uid = lambda uid: [e2nid['iid'][iid] for iid in ratings[ratings.uid.isin([uid])].iid]
+    pos_unid_inid_map = {e2nid['uid'][uid]: get_pos_i_nid_with_uid(uid) for uid in uids}
+    neg_unid_inid_map = {u_nid: list(set(n_nids) - set(pos_unid_inid_map[u_nid])) for u_nid in u_nids}
 
-    train_pos_pairs = [[e2nid['uid'][uid], e2nid['iid'][iid]] for uid, iid in zip(ratings.iloc[train_rating_idx].uid, ratings.iloc[train_rating_idx].iid)]
-    test_pos_pairs = [[e2nid['uid'][uid], e2nid['iid'][iid]] for uid, iid in zip(ratings.iloc[test_rating_mask].uid, ratings.iloc[test_rating_mask].iid)]
-    train_pos_pairs_df = pd.DataFrame(data=np.array(train_pos_pairs), columns=['u_nid', 'pos_i_nid'])
-    test_pos_pairs_df = pd.DataFrame(data=np.array(test_pos_pairs), columns=['u_nid', 'pos_i_nid'])
+    train_ratings = ratings.iloc[train_rating_idx]
+    test_ratings = ratings.iloc[test_rating_mask]
+    get_train_pos_i_nid_with_uid = lambda uid: [e2nid['iid'][iid] for iid in train_ratings[train_ratings.uid.isin([uid])].iid]
+    get_test_pos_i_nid_with_uid = lambda uid: [e2nid['iid'][iid] for iid in test_ratings[test_ratings.uid.isin([uid])].iid]
+    train_pos_unid_inid_map = {e2nid['uid'][uid]: get_train_pos_i_nid_with_uid(uid) for uid in uids}
+    test_pos_unid_inid_map = {e2nid['uid'][uid]: get_test_pos_i_nid_with_uid(uid) for uid in uids}
 
-    neg_pairs = set([tuple(l) for l in all_pairs]).difference([tuple(l) for l in pos_paris])
-    neg_pairs = [list(i) for i in neg_pairs]
-    neg_pairs_df = pd.DataFrame(data=np.array(neg_pairs), columns=['u_nid', 'neg_i_nid'])
-
-    train_user_pos_neg_pair = pd.merge(train_pos_pairs_df, neg_pairs_df, on='u_nid', how='inner').to_numpy()
-    test_user_pos_neg_pair = pd.merge(test_pos_pairs_df, neg_pairs_df, on='u_nid', how='inner').to_numpy()
-
-    return train_user_pos_neg_pair, test_user_pos_neg_pair
+    return train_pos_unid_inid_map, test_pos_unid_inid_map, neg_unid_inid_map
 
 
 def drop_infrequent_concept_from_str(df, concept_name, num_occs):
@@ -431,8 +429,10 @@ def convert_2_data(
         kwargs['train_edge_mask'] = train_edge_mask
         kwargs['test_edge_mask'] = test_edge_mask
 
-        train_user_pos_neg_pair, test_user_pos_neg_pair =  create_user_pos_neg_pair(ratings, train_rating_idx, test_rating_mask, e2nid)
-        kwargs['train_user_pos_neg_pair'], kwargs['test_user_pos_neg_pair'] = train_user_pos_neg_pair, test_user_pos_neg_pair
+        train_pos_unid_inid_map, test_pos_unid_inid_map, neg_unid_inid_map = \
+            split_train_test_pos_neg_map(ratings, train_rating_idx, test_rating_mask, e2nid)
+        kwargs['train_pos_unid_inid_map'], kwargs['test_pos_unid_inid_map'], kwargs['neg_unid_inid_map'] = \
+            train_pos_unid_inid_map, test_pos_unid_inid_map, neg_unid_inid_map
 
     return Data(**kwargs)
 
@@ -559,7 +559,7 @@ class MovieLens(InMemoryDataset):
             suffixes.append('train_{}'.format(self.train_ratio))
         if self.seed is not None:
             suffixes.append('seed_{}'.format(self.seed))
-        if self.debug:
+        if self.debug is not None:
             suffixes.append('debug_{}'.format(self.debug))
         if not suffixes:
             suffix = ''
