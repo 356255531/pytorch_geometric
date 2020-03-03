@@ -11,7 +11,6 @@ from collections import Counter
 from torch_geometric.data import InMemoryDataset, download_url
 from torch_geometric.io import read_ml
 from torch_geometric.data import Data, extract_zip
-from torch_geometric.utils import create_path, filter_path
 
 
 def save_df(df, path):
@@ -93,8 +92,8 @@ def drop_infrequent_concept_from_str(df, concept_name, num_occs):
 
 def convert_2_data(
         users, items, ratings,
-        train_ratio, step_length,
-        directed=True
+        train_ratio, randomizer,
+        directed
 ):
     """
     Entitiy node include (gender, occupation, genres)
@@ -141,9 +140,9 @@ def convert_2_data(
     years = list(items.discretized_year.unique())
     num_years = len(years)
 
-    directors, num_directors = get_concept_num_from_str(items, 'director')
-    actors, num_actors = get_concept_num_from_str(items, 'actor')
-    writers, num_writers = get_concept_num_from_str(items, 'writer')
+    directors, num_directors = get_concept_num_from_str(items, 'directors')
+    actors, num_actors = get_concept_num_from_str(items, 'actors')
+    writers, num_writers = get_concept_num_from_str(items, 'writers')
 
     #########################  Define number of entities  #########################
     num_nodes = num_users + num_items + num_genders + num_occupations + num_ages + num_genres + num_years + \
@@ -155,7 +154,7 @@ def convert_2_data(
     nid2e = {i + acc: ('uid', uid) for i, uid in enumerate(users['uid'])}
     acc += users.shape[0]
     iid2nid = {iid: i + acc for i, iid in enumerate(items['iid'])}
-    for i, iid in enumerate(items['iid'].values):
+    for i, iid in enumerate(items['iid']):
         nid2e[i + acc] = ('iid', iid)
     acc += items.shape[0]
     gender2nid = {gender: i + acc for i, gender in enumerate(genders)}
@@ -237,12 +236,13 @@ def convert_2_data(
         edge_attrs.append([relation2index['year'], -1])
         rating_begin += 1
 
-        if director != '':
-            d_nid = e2nid['director'][director]
-            row_idx.append(d_nid)
-            col_idx.append(i_nid)
-            edge_attrs.append([relation2index['director'], -1])
-            rating_begin += 1
+        for director in directors:
+            if director != '':
+                d_nid = e2nid['director'][director]
+                row_idx.append(d_nid)
+                col_idx.append(i_nid)
+                edge_attrs.append([relation2index['director'], -1])
+                rating_begin += 1
 
         for actor in actors:
             if actor != '':
@@ -252,12 +252,13 @@ def convert_2_data(
                 edge_attrs.append([relation2index['actor'], -1])
                 rating_begin += 1
 
-        if writer != '':
-            w_nid = e2nid['writer'][writer]
-            row_idx.append(w_nid)
-            col_idx.append(i_nid)
-            edge_attrs.append([relation2index['writer'], -1])
-            rating_begin += 1
+        for writer in writers:
+            if writer != '':
+                w_nid = e2nid['writer'][writer]
+                row_idx.append(w_nid)
+                col_idx.append(i_nid)
+                edge_attrs.append([relation2index['writer'], -1])
+                rating_begin += 1
 
         for genre in genres:
             if not row[genre]:
@@ -301,9 +302,9 @@ def convert_2_data(
         for _, row in tqdm.tqdm(items.iterrows(), total=items.shape[0]):
             iid = row['iid']
             year = row['discretized_year']
-            director = row['director']
+            directors = row['director'].split(', ')
             actors = row['actor'].split(', ')
-            writer = row['writer']
+            writers = row['writer'].split(', ')
 
             i_nid = e2nid['iid'][iid]
             y_nid = e2nid['year'][year]
@@ -311,11 +312,13 @@ def convert_2_data(
             col_idx.append(y_nid)
             edge_attrs.append([relation2index['-year'], -1])
 
-            if director != '':
-                d_nid = e2nid['director'][director]
-                row_idx.append(i_nid)
-                col_idx.append(d_nid)
-                edge_attrs.append([relation2index['-director'], -1])
+            for director in directors:
+                if director != '':
+                    d_nid = e2nid['director'][director]
+                    row_idx.append(i_nid)
+                    col_idx.append(d_nid)
+                    edge_attrs.append([relation2index['-director'], -1])
+                    rating_begin += 1
 
             for actor in actors:
                 if actor != '':
@@ -323,12 +326,15 @@ def convert_2_data(
                     row_idx.append(i_nid)
                     col_idx.append(a_nid)
                     edge_attrs.append([relation2index['-actor'], -1])
+                    rating_begin += 1
 
-            if writer != '':
-                w_nid = e2nid['writer'][writer]
-                row_idx.append(i_nid)
-                col_idx.append(w_nid)
-                edge_attrs.append([relation2index['-writer'], -1])
+            for writer in writers:
+                if writer != '':
+                    w_nid = e2nid['writer'][writer]
+                    row_idx.append(i_nid)
+                    col_idx.append(w_nid)
+                    edge_attrs.append([relation2index['-writer'], -1])
+                    rating_begin += 1
 
             for genre in genres:
                 if not row[genre]:
@@ -337,6 +343,7 @@ def convert_2_data(
                 row_idx.append(i_nid)
                 col_idx.append(g_nid)
                 edge_attrs.append([relation2index['-genre'], -1])
+                rating_begin += 1
 
     print('Creating inverse rating property edges...')
     row_idx += [e2nid['iid'][iid] for iid in ratings['iid']]
@@ -386,7 +393,7 @@ def convert_2_data(
     if train_ratio is not None:
         train_rating_mask = torch.zeros(ratings.shape[0], dtype=torch.bool)
         test_rating_mask = torch.zeros(ratings.shape[0], dtype=torch.bool)
-        train_rating_idx = np.random.choice(range(ratings.shape[0]), int(ratings.shape[0] * train_ratio))
+        train_rating_idx = randomizer.choices(range(ratings.shape[0]), k=int(ratings.shape[0] * train_ratio))
         test_rating_idx = list(set(range(ratings.shape[0])) - set(train_rating_idx))
         train_rating_mask[train_rating_idx] = 1
         test_rating_mask[test_rating_idx] = 1
@@ -423,20 +430,9 @@ def convert_2_data(
             )
         kwargs['train_edge_mask'] = train_edge_mask
         kwargs['test_edge_mask'] = test_edge_mask
-        if step_length:
-            print('Creating path features...')
-            path_np = create_path(edge_index[:, train_edge_mask], step_length)
-            kwargs['path_np'] = filter_path(path_np)
-            kwargs['num_path'] = kwargs['path_np'].shape[1]
 
         train_user_pos_neg_pair, test_user_pos_neg_pair =  create_user_pos_neg_pair(ratings, train_rating_idx, test_rating_mask, e2nid)
         kwargs['train_user_pos_neg_pair'], kwargs['test_user_pos_neg_pair'] = train_user_pos_neg_pair, test_user_pos_neg_pair
-    else:
-        if step_length:
-            print('Creating path features...')
-            path = create_path(edge_index, step_length)
-            kwargs['path_np'] = filter_path(path)
-            kwargs['num_path'] = kwargs['path_np'].shape[1]
 
     return Data(**kwargs)
 
@@ -454,12 +450,13 @@ class MovieLens(InMemoryDataset):
         self.name = name.lower()
         assert self.name in ['1m']
         self.num_core = kwargs.get('num_core', 10)
-        self.num_feat_core = kwargs.get('num_core', 5)
-        self.step_length = kwargs.get('step_length', 2)
+        self.num_feat_core = kwargs.get('num_core', 10)
         self.implicit = kwargs.get('implicit', True)
         self.train_ratio = kwargs.get('train_ratio', None)
         self.debug = kwargs.get('debug', False)
         self.seed = kwargs.get('seed', None)
+        self.randomizer = rd.Random() if self.seed is None else rd.Random(self.seed)
+        self.directed = kwargs.get('directed', True)
         self.suffix = self.build_suffix()
         super(MovieLens, self).__init__(root, transform, pre_transform, pre_filter)
 
@@ -531,9 +528,9 @@ class MovieLens(InMemoryDataset):
             items = items[items.iid.isin(ratings['iid'])]
 
             # Drop the infrequent writer, actor and directors
-            items = drop_infrequent_concept_from_str(items, 'writer', self.num_feat_core)
-            items = drop_infrequent_concept_from_str(items, 'director', self.num_feat_core)
-            items = drop_infrequent_concept_from_str(items, 'actor', self.num_feat_core)
+            items = drop_infrequent_concept_from_str(items, 'writers', self.num_feat_core)
+            items = drop_infrequent_concept_from_str(items, 'directors', self.num_feat_core)
+            items = drop_infrequent_concept_from_str(items, 'actors', self.num_feat_core)
 
             users, items, ratings = reindex_df(users, items, ratings)
             save_df(users, join(self.processed_dir, 'users.pkl'))
@@ -541,11 +538,11 @@ class MovieLens(InMemoryDataset):
             save_df(ratings, join(self.processed_dir, 'ratings.pkl'))
 
         if self.debug:
-            ratings = ratings.iloc[np.random.choice(range(ratings.shape[0]), int(self.debug * ratings.shape[0]))]
+            ratings = ratings.iloc[self.randomizer.choices(range(ratings.shape[0]), k=int(self.debug * ratings.shape[0]))]
             users = users[users.uid.isin(ratings.uid)]
             items = items[items.iid.isin(ratings.iid)]
 
-        data = convert_2_data(users, items, ratings, self.train_ratio, self.step_length)
+        data = convert_2_data(users, items, ratings, self.train_ratio, self.randomizer, self.directed)
 
         torch.save(self.collate([data]), self.processed_paths[0], pickle_protocol=4)
 
@@ -554,14 +551,16 @@ class MovieLens(InMemoryDataset):
 
     def build_suffix(self):
         suffixes = []
+        if self.directed:
+            suffixes.append('directed_')
+        suffixes.append('core_{}'.format(self.num_core))
+        suffixes.append('featcore_{}'.format(self.num_feat_core))
         if self.train_ratio is not None:
             suffixes.append('train_{}'.format(self.train_ratio))
-        if self.debug:
-            suffixes.append('debug_{}'.format(self.debug))
-        if self.step_length:
-            suffixes.append('path_{}'.format(self.step_length))
         if self.seed is not None:
             suffixes.append('seed_{}'.format(self.seed))
+        if self.debug:
+            suffixes.append('debug_{}'.format(self.debug))
         if not suffixes:
             suffix = ''
         else:
@@ -574,5 +573,7 @@ if __name__ == '__main__':
     root = osp.join('.', 'tmp', 'ml')
     name = '1m'
     debug = 0.01
-    dataset = MovieLens(root=root, name='1m', debug=debug, train_ratio=0.8)
+    seed = 2020
+    dataset = MovieLens(root=root, name='1m', debug=debug, train_ratio=0.8, seed=seed)
+    print('stop')
 

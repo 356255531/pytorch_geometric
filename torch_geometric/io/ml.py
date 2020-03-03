@@ -42,7 +42,7 @@ def read_ml(dir, processed=False):
                 # extract year
                 assert re.match(r'.*\([0-9]{4}\)$', title)
                 year = title[-5:-1]
-                title = title[:-6].strip()
+                title = title.split(', The')[0].split(' (')[0].split(', A')[0].strip()
 
                 data = {'iid': int(id_), 'title': title, 'year': int(year)}
                 for g in genres_set:
@@ -87,9 +87,9 @@ def read_ml(dir, processed=False):
                 except:
                     movie_info_dic = dict()
 
-            director = movie_info_dic.get('Director', '')
-            actor = movie_info_dic.get('Actors', '')
-            writer = movie_info_dic.get('Writer', '')
+            director = ', '.join(movie_info_dic.get('Director', '').split(', '))
+            actor = ', '.join(movie_info_dic.get('Actors', '').split(', '))
+            writer = ', '.join(movie_info_dic.get('Writer', '').split(', '))
             # poster = movie_info_dic.get('Poster', None)
 
             directors_strs.append(director)
