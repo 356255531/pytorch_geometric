@@ -450,10 +450,10 @@ class MovieLens(InMemoryDataset):
         self.name = name.lower()
         assert self.name in ['1m']
         self.num_core = kwargs.get('num_core', 10)
-        self.num_feat_core = kwargs.get('num_core', 10)
+        self.num_feat_core = kwargs.get('num_feat_core', 10)
         self.implicit = kwargs.get('implicit', True)
         self.train_ratio = kwargs.get('train_ratio', None)
-        self.debug = kwargs.get('debug', False)
+        self.debug = kwargs.get('debug', None)
         self.seed = kwargs.get('seed', None)
         self.randomizer = rd.Random() if self.seed is None else rd.Random(self.seed)
         self.directed = kwargs.get('directed', True)
@@ -537,7 +537,7 @@ class MovieLens(InMemoryDataset):
             save_df(items, join(self.processed_dir, 'movies.pkl'))
             save_df(ratings, join(self.processed_dir, 'ratings.pkl'))
 
-        if self.debug:
+        if self.debug is not None:
             ratings = ratings.iloc[self.randomizer.choices(range(ratings.shape[0]), k=int(self.debug * ratings.shape[0]))]
             users = users[users.uid.isin(ratings.uid)]
             items = items[items.iid.isin(ratings.iid)]
