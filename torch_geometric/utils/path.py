@@ -7,23 +7,33 @@ def filter_path(path):
     return path
 
 
-def join(*edge_indices):
-    step_length = len(edge_indices) - 1
-    source, target = edge_indices[0].cpu().long().numpy()
-    not_mask = np.where(source != target)
-    source, target = source[not_mask], target[not_mask]
-    df = pd.DataFrame({'0': source, '1': target})
-    for i in range(step_length):
-        source_, target_ = edge_indices[i + 1].cpu().long().numpy()
-        not_mask_ = np.where(source_ != target_)
-        source_, target_ = source_[not_mask_], target_[not_mask_]
-        df_ = pd.DataFrame({str(i + 1): source_, str(i + 2): target_})
-        df = pd.merge(df, df_, on=str(i + 1), how='inner')
-        masks = [df.iloc[:, i] != df.iloc[:, -1] for i in range(df.shape[1] - 1)]
-        mask = reduce(lambda x, y: x * y, masks)
-        df = df[mask]
-    return df.T.values
+def join(edge_index_np, target=None, step_length=2):
+    mask = np.where(edge_index_np[0, :] != edge_index_np[1, :])
+    edge_index_np = edge_index_np[:, mask]
 
+    if target is not None:
+        edge_index_suf_idx = np.isin(edge_index_np[1, :], target)
+        path_index_df = pd.DataFrame(
+            edge_index_np[:, edge_index_suf_idx].cpu().numpy().T,
+            columns=[str(step_length - 1), str(step_length)]
+        )
+    else:
+        path_index_df = pd.DataFrame(
+            edge_index_np.T,
+            columns=[str(step_length - 1), str(step_length)]
+        )
+    for i in range(step_length - 1, 0, -1):
+        edge_index_df = pd.DataFrame(
+            edge_index_np.T, columns=[str(i - 1), str(i)]
+        )
+        path_index_df = pd.merge(edge_index_df, path_index_df, on=str(i), how='inner')
+        masks = [
+            path_index_df.iloc[:, 0] != path_index_df.iloc[:, i]
+            for i in range(1, path_index_df.shape[1])
+        ]
+        mask = reduce(lambda x, y: x * y, masks)
+        path_index_df = path_index_df[mask]
+    return path_index_df.to_numpy().T
 
 def create_path(edge_index, step_length):
     edge_indices = [edge_index for i in range(step_length)]

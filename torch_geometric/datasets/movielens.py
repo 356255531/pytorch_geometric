@@ -534,7 +534,8 @@ class MovieLens(InMemoryDataset):
 
             users, items, ratings = reindex_df(users, items, ratings)
             save_df(users, join(self.processed_dir, 'users.pkl'))
-            save_df(items, join(self.processed_dir, 'movies.pkl'))
+            save_df(items, join(self.processed_dir, 'movies.pkl'
+                                                    ''))
             save_df(ratings, join(self.processed_dir, 'ratings.pkl'))
 
         if self.debug is not None:
