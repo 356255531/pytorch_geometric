@@ -7,22 +7,22 @@ def filter_path(path):
     return path
 
 
-def join(edge_index_np, target=None, step_length=2):
-    mask = np.where(edge_index_np[0, :] != edge_index_np[1, :])
+def join(edge_index_np, target=None, path_length=2):
+    mask = np.where(edge_index_np[0, :] != edge_index_np[1, :])[0]
     edge_index_np = edge_index_np[:, mask]
 
     if target is not None:
         edge_index_suf_idx = np.isin(edge_index_np[1, :], target)
         path_index_df = pd.DataFrame(
-            edge_index_np[:, edge_index_suf_idx].cpu().numpy().T,
-            columns=[str(step_length - 1), str(step_length)]
+            edge_index_np[:, edge_index_suf_idx].T,
+            columns=[str(path_length - 1), str(path_length)]
         )
     else:
         path_index_df = pd.DataFrame(
             edge_index_np.T,
-            columns=[str(step_length - 1), str(step_length)]
+            columns=[str(path_length - 1), str(path_length)]
         )
-    for i in range(step_length - 1, 0, -1):
+    for i in range(path_length - 1, 0, -1):
         edge_index_df = pd.DataFrame(
             edge_index_np.T, columns=[str(i - 1), str(i)]
         )
