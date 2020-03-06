@@ -426,7 +426,7 @@ def convert_2_data(
             kwargs['path_np'] = filter_path(path_np)
             kwargs['num_path'] = kwargs['path_np'].shape[1]
 
-        train_user_pos_neg_pair, test_user_pos_neg_pair =  create_user_pos_neg_pair(ratings, train_rating_idx, test_rating_mask, e2nid)
+        train_user_pos_neg_pair, test_user_pos_neg_pair = create_user_pos_neg_pair(ratings, train_rating_idx, test_rating_mask, e2nid)
         kwargs['train_user_pos_neg_pair'], kwargs['test_user_pos_neg_pair'] = train_user_pos_neg_pair, test_user_pos_neg_pair
     else:
         if step_length:
@@ -571,4 +571,6 @@ if __name__ == '__main__':
     name = '1m'
     debug = 0.01
     dataset = MovieLens(root=root, name='1m', debug=debug, train_ratio=0.8)
+    import pdb
+    pdb.set_trace()
 
