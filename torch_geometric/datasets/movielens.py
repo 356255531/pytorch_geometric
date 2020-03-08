@@ -300,9 +300,9 @@ def convert_2_data(
         for _, row in tqdm.tqdm(items.iterrows(), total=items.shape[0]):
             iid = row['iid']
             year = row['discretized_year']
-            directors = row['director'].split(', ')
-            actors = row['actor'].split(', ')
-            writers = row['writer'].split(', ')
+            directors = row['directors'].split(', ')
+            actors = row['actors'].split(', ')
+            writers = row['writers'].split(', ')
 
             i_nid = e2nid['iid'][iid]
             y_nid = e2nid['year'][year]
