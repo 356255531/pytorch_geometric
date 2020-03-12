@@ -3,7 +3,6 @@ import torch
 from torch import nn
 import torch.nn.functional as F
 from torch_geometric.nn import GCNConv
-import numpy as np
 
 from datasets import get_planetoid_dataset
 from train_eval import run, random_planetoid_splits
@@ -22,38 +21,23 @@ parser.add_argument('--normalize_features', type=bool, default=True)
 args = parser.parse_args()
 
 
-class ConvAutoencoder(nn.Module):
+class ConvEncoder(nn.Module):
     def __init__(self, in_channel, out_channel):
-        super(ConvAutoencoder, self).__init__()
-        ## encoder layers ##
-        # conv layer (depth from 1 --> 16), 3x3 kernels
+        super(ConvEncoder, self).__init__()
         self.conv1 = nn.Conv2d(in_channel, 16, 3, padding=1)
-        # conv layer (depth from 16 --> 4), 3x3 kernels
         self.conv2 = nn.Conv2d(16, 4, 3, padding=1)
-        # pooling layer to reduce x-y dims by two; kernel and stride of 2
         self.pool = nn.MaxPool2d(2, 2)
 
-        ## decoder layers ##
-        ## a kernel of 2 and a stride of 2 will increase the spatial dims by 2
         self.t_conv1 = nn.ConvTranspose2d(4, 16, 2, stride=2)
         self.t_conv2 = nn.ConvTranspose2d(16, out_channel, 2, stride=2)
 
     def forward(self, x):
-        ## encode ##
-        # add hidden layers with relu activation function
-        # and maxpooling after
         x = F.relu(self.conv1(x))
         x = self.pool(x)
-        # add second hidden layer
         x = F.relu(self.conv2(x))
-        x = self.pool(x)  # compressed representation
-
-        ## decode ##
-        # add transpose conv layers, with relu activation function
+        x = self.pool(x)
         x = F.relu(self.t_conv1(x))
-        # output layer (with sigmoid for scaling from 0 to 1)
-        x = F.softmax(self.t_conv2(x), dim=1)
-
+        x = F.sigmoid(self.t_conv2(x))
         return x
 
 
@@ -62,8 +46,8 @@ class Net(torch.nn.Module):
         super(Net, self).__init__()
         self.size = dataset.data.x.shape[0]
 
-        self.att_block_1 = ConvAutoencoder(2, 2)
-        self.att_block_2 = ConvAutoencoder(3, 3)
+        self.att_block_1 = ConvEncoder(2, 2)
+        # self.att_block_2 = ConvEncoder(3, 3)
 
         self.conv1_1 = GCNConv(dataset.num_features, args.hidden)
         self.conv1_2 = GCNConv(dataset.num_features, args.hidden)
@@ -106,27 +90,27 @@ class Net(torch.nn.Module):
                 sparse_adapted_adj = torch.sparse.mm(sparse_adapted_adj, dense_attended_adjs[i, :, :]).to_sparse()
         else:
             raise NotImplementedError
-        return sparse_adapted_adj.indices(), sparse_adapted_adj.values()
+        return sparse_adapted_adj.indices(), sparse_adapted_adj.values().pow(1 / len(meta_path_edge_indicis))
 
     def forward(self, data):
-        meta_path_1 = [data.edge_index, data.edge_index]
+        # meta_path_1 = [data.edge_index, data.edge_index]
         meta_path_2 = [data.edge_index, data.edge_index, data.edge_index]
 
-        meta_edge_index_1, edge_weight_1 = self.path_transform(meta_path_1, self.att_block_1)
+        # meta_edge_index_1, edge_weight_1 = self.path_transform(meta_path_1, self.att_block_1)
         meta_edge_index_2, edge_weight_2 = self.path_transform(meta_path_2, self.att_block_2)
 
         x = data.x
         x_1 = F.relu(self.conv1_1(x, data.edge_index))
-        x_2 = F.relu(self.conv1_2(x, meta_edge_index_1, edge_weight=edge_weight_1))
-        x_3 = F.relu(self.conv1_3(x, meta_edge_index_2, edge_weight=edge_weight_2))
-        x = torch.mean(torch.stack([x_1, x_2, x_3]), dim=0)
+        # x = F.relu(self.conv1_2(x, meta_edge_index_1, edge_weight=edge_weight_1))
+        x = F.relu(self.conv1_3(x, meta_edge_index_2, edge_weight=edge_weight_2))
+        # x = torch.mean(torch.stack([x_1, x_2, x_3]), dim=0)
 
         x = F.dropout(x, p=args.dropout, training=self.training)
 
-        x_1 = self.conv2_1(x, data.edge_index)
-        x_2 = self.conv2_2(x, meta_edge_index_1, edge_weight=edge_weight_1)
-        x_3 = self.conv2_3(x, meta_edge_index_2, edge_weight=edge_weight_2)
-        x = torch.mean(torch.stack([x_1, x_2, x_3]), dim=0)
+        # x_1 = self.conv2_1(x, data.edge_index)
+        # x = self.conv2_2(x, meta_edge_index_1, edge_weight=edge_weight_1)
+        x = self.conv2_3(x, meta_edge_index_2, edge_weight=edge_weight_2)
+        # x = torch.mean(torch.stack([x_1, x_2, x_3]), dim=0)
         return F.log_softmax(x, dim=1)
 
 
