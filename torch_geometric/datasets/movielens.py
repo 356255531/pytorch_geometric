@@ -3,7 +3,7 @@ from os.path import join
 from os.path import isfile
 import numpy as np
 import random as rd
-import tqdm
+import pandas as pd
 import itertools
 from collections import Counter
 
@@ -89,7 +89,6 @@ def drop_infrequent_concept_from_str(df, concept_name, num_occs):
 def convert_2_data(
         users, items, ratings,
         train_ratio, randomizer,
-        directed
 ):
     """
     Entitiy node include (gender, occupation, genres)
@@ -104,12 +103,6 @@ def convert_2_data(
 
     num_users = users.shape[0]
     num_items = items.shape[0]
-
-    #########################  Define relationship  #########################
-    relations = [
-        'gender2u2user', 'occupation2user', 'age2user', 'genre2item', 'year2item',
-        'director2item', 'actor2item', 'writer2item', 'user2item',
-    ]
 
     #########################  Define entities  #########################
     genders = ['M', 'F']
@@ -127,9 +120,9 @@ def convert_2_data(
     years = list(items.discretized_year.unique())
     num_years = len(years)
 
-    directors, num_directors = get_concept_num_from_str(items, 'directors')
-    actors, num_actors = get_concept_num_from_str(items, 'actors')
-    writers, num_writers = get_concept_num_from_str(items, 'writers')
+    unique_directors, num_directors = get_concept_num_from_str(items, 'directors')
+    unique_actors, num_actors = get_concept_num_from_str(items, 'actors')
+    unique_writers, num_writers = get_concept_num_from_str(items, 'writers')
 
     #########################  Define number of entities  #########################
     num_nodes = num_users + num_items + num_genders + num_occupations + num_ages + num_genres + num_years + \
@@ -164,83 +157,94 @@ def convert_2_data(
     for i, year in enumerate(years):
         nid2e[i + acc] = ('year', year)
     acc += num_years
-    director2nid = {director: i + acc for i, director in enumerate(directors)}
-    for i, director in enumerate(directors):
+    director2nid = {director: i + acc for i, director in enumerate(unique_directors)}
+    for i, director in enumerate(unique_directors):
         nid2e[i + acc] = ('director', director)
     acc += num_directors
-    actor2nid = {actor: i + acc for i, actor in enumerate(actors)}
-    for i, actor in enumerate(actors):
+    actor2nid = {actor: i + acc for i, actor in enumerate(unique_actors)}
+    for i, actor in enumerate(unique_actors):
         nid2e[i + acc] = ('actor', actor)
     acc += num_actors
-    writer2nid = {writer: i + acc for i, writer in enumerate(writers)}
-    for i, writer in enumerate(writers):
+    writer2nid = {writer: i + acc for i, writer in enumerate(unique_writers)}
+    for i, writer in enumerate(unique_writers):
         nid2e[i + acc] = ('writer', writer)
     e2nid = {'uid': uid2nid, 'iid': iid2nid, 'gender': gender2nid, 'occ': occ2nid, 'age': age2nid, 'genre': genre2nid,
              'year': year2nid, 'director': director2nid, 'actor': actor2nid, 'writer': writer2nid}
 
     #########################  create graphs  #########################
+    edge_index_nps = {}
+    print('Creating user property edges...')
     u_nids = [e2nid['uid'][uid] for uid in users.uid]
     gender_nids = [e2nid['gender'][gender] for gender in users.gender]
-    occ_nids = [e2nid['occ'][occ] for occ in users.occ]
+    gender2user_edge_index_np = np.vstack((np.array(gender_nids), np.array(u_nids)))
+    occ_nids = [e2nid['occ'][occ] for occ in users.occupation]
+    occ2user_edge_index_np = np.vstack((np.array(occ_nids), np.array(u_nids)))
     age_nids = [e2nid['age'][age] for age in users.age]
+    age2user_edge_index_np = np.vstack((np.array(age_nids), np.array(u_nids)))
+    edge_index_nps['gender2user'] = gender2user_edge_index_np
+    edge_index_nps['occ2user'] = occ2user_edge_index_np
+    edge_index_nps['age2user'] = age2user_edge_index_np
 
     print('Creating item property edges...')
     i_nids = [e2nid['iid'][iid] for iid in items.iid]
-    y_nids = [e2nid['year'][year] for year in items.discretized_year]
-    directors = [directors.split(',') for directors in items.directors]
-    actors = items.actors
-    writers = items.writers
+    year_nids = [e2nid['year'][year] for year in items.discretized_year]
+    year2user_edge_index_np = np.vstack((np.array(year_nids), np.array(i_nids)))
+
+    directors_list = [
+        [director for director in directors.split(', ') if director != '']
+        for directors in items.directors
+    ]
+    directors_nids = [[e2nid['director'][director] for director in directors] for directors in directors_list]
+    directors_nids = list(itertools.chain.from_iterable(directors_nids))
+    d_i_nids = [[i_nid for _ in range(len(directors_list[idx]))] for idx, i_nid in enumerate(i_nids)]
+    d_i_nids = list(itertools.chain.from_iterable(d_i_nids))
+    director2user_edge_index_np = np.vstack((np.array(directors_nids), np.array(d_i_nids)))
+
+    actors_list = [
+        [actor for actor in actors.split(', ') if actor != '']
+        for actors in items.actors
+    ]
+    actor_nids = [[e2nid['actor'][actor] for actor in actors] for actors in actors_list]
+    actor_nids = list(itertools.chain.from_iterable(actor_nids))
+    a_i_nids = [[i_nid for _ in range(len(actors_list[idx]))] for idx, i_nid in enumerate(i_nids)]
+    a_i_nids = list(itertools.chain.from_iterable(a_i_nids))
+    actor2user_edge_index_np = np.vstack((np.array(actor_nids), np.array(a_i_nids)))
+
+    writers_list = [
+        [writer for writer in writers.split(', ') if writer != '']
+        for writers in items.writers
+    ]
+    writer_nids = [[e2nid['writer'][writer] for writer in writers] for writers in writers_list]
+    writer_nids = list(itertools.chain.from_iterable(writer_nids))
+    w_i_nids = [[i_nid for _ in range(len(writers_list[idx]))] for idx, i_nid in enumerate(i_nids)]
+    w_i_nids = list(itertools.chain.from_iterable(w_i_nids))
+    writer2user_edge_index_np = np.vstack((np.array(writer_nids), np.array(w_i_nids)))
+    edge_index_nps['year2user'] = year2user_edge_index_np
+    edge_index_nps['director2user'] = director2user_edge_index_np
+    edge_index_nps['actor2user'] = actor2user_edge_index_np
+    edge_index_nps['writer2user'] = writer2user_edge_index_np
 
     print('Creating rating property edges...')
     u_nids = [e2nid['uid'][uid] for uid in ratings.uid]
     i_nids = [e2nid['iid'][iid] for iid in ratings.iid]
+    user2item_edge_index_np = np.vstack((np.array(u_nids), np.array(i_nids)))
 
     kwargs = {
         'num_nodes': num_nodes,
         'users': users, 'ratings': ratings, 'items': items,
-        'relations': relations,
+        'edge_index_nps': edge_index_nps,
         'e2nid': e2nid, 'nid2e': nid2e
     }
 
     if train_ratio is not None:
         train_rating_mask = torch.zeros(ratings.shape[0], dtype=torch.bool)
         test_rating_mask = torch.ones(ratings.shape[0], dtype=torch.bool)
-        train_rating_idx = randomizer.choices(range(ratings.shape[0]), k=int(ratings.shape[0] * train_ratio))
+        train_rating_idx = randomizer.sample(population=range(ratings.shape[0]), k=int(ratings.shape[0] * train_ratio))
         train_rating_mask[train_rating_idx] = 1
         test_rating_mask[train_rating_idx] = 0
 
-        if directed:
-            train_edge_mask = torch.cat(
-                (
-                    torch.ones(rating_begin, dtype=torch.bool),
-                    train_rating_mask,
-                    train_rating_mask)
-            )
-
-            test_edge_mask = torch.cat(
-                (
-                    torch.zeros(rating_begin, dtype=torch.bool),
-                    test_rating_mask,
-                    test_rating_mask)
-            )
-        else:
-            train_edge_mask = torch.cat(
-                (
-                    torch.ones(rating_begin, dtype=torch.bool),
-                    train_rating_mask,
-                    torch.ones(rating_begin, dtype=torch.bool),
-                    train_rating_mask)
-            )
-
-            test_edge_mask = torch.cat(
-                (
-                    torch.zeros(rating_begin, dtype=torch.bool),
-                    test_rating_mask,
-                    torch.zeros(rating_begin, dtype=torch.bool),
-                    test_rating_mask)
-            )
-        kwargs['train_edge_mask'] = train_edge_mask
-        kwargs['test_edge_mask'] = test_edge_mask
+        kwargs['train_edge_index_np'] = user2item_edge_index_np[:, train_rating_mask]
+        kwargs['test_edge_index_np'] = user2item_edge_index_np[:, test_rating_mask]
 
         train_pos_unid_inid_map, test_pos_unid_inid_map, neg_unid_inid_map = \
             split_train_test_pos_neg_map(ratings, train_rating_idx, test_rating_mask, e2nid)
@@ -266,16 +270,13 @@ class MovieLens(InMemoryDataset):
         self.num_feat_core = kwargs.get('num_feat_core', 10)
         self.implicit = kwargs.get('implicit', True)
         self.train_ratio = kwargs.get('train_ratio', None)
-        self.debug = kwargs.get('debug', None)
         self.seed = kwargs.get('seed', None)
         self.randomizer = rd.Random() if self.seed is None else rd.Random(self.seed)
-        self.directed = kwargs.get('directed', True)
         self.suffix = self.build_suffix()
         super(MovieLens, self).__init__(root, transform, pre_transform, pre_filter)
 
+        assert self.implicit
         self.data, self.slices = torch.load(self.processed_paths[0])
-        if self.implicit:
-            self.data.edge_attr[self.data.rating_edge_mask[0], 1] = 1
         print('Graph params: {}'.format(self.data))
 
         print('Dataset loaded!')
@@ -298,14 +299,17 @@ class MovieLens(InMemoryDataset):
         # read files
         if isfile(join(self.processed_dir, 'movies.pkl')) and isfile(join(self.processed_dir, 'ratings.pkl')) and isfile(join(self.processed_dir, 'users.pkl')):
             print('Read data frame!')
-            users, items, ratings = read_ml(self.processed_dir, processed=True)
+            users = pd.read_csv(join(self.processed_dir, 'users.pkl'))
+            items = pd.read_csv(join(self.processed_dir, 'movies.pkl'))
+            ratings = pd.read_csv(join(self.processed_dir, 'ratings.pkl'))
             users = users.fillna('')
             items = items.fillna('')
             ratings = ratings.fillna('')
         else:
             print('Read from raw data!')
-            users, items, ratings = read_ml(unzip_raw_dir, processed=False)
+            users, items, ratings = read_ml(unzip_raw_dir)
 
+            print('Preprocessing...')
             # Discretized year
             years = items.year.to_numpy()
             min_year = min(years)
@@ -346,17 +350,13 @@ class MovieLens(InMemoryDataset):
             items = drop_infrequent_concept_from_str(items, 'actors', self.num_feat_core)
 
             users, items, ratings = reindex_df(users, items, ratings)
+            print('Preprocessing done.')
+
             save_df(users, join(self.processed_dir, 'users.pkl'))
-            save_df(items, join(self.processed_dir, 'movies.pkl'
-                                                    ''))
+            save_df(items, join(self.processed_dir, 'movies.pkl'))
             save_df(ratings, join(self.processed_dir, 'ratings.pkl'))
 
-        if self.debug is not None:
-            ratings = ratings.iloc[self.randomizer.choices(range(ratings.shape[0]), k=int(self.debug * ratings.shape[0]))]
-            users = users[users.uid.isin(ratings.uid)]
-            items = items[items.iid.isin(ratings.iid)]
-
-        data = convert_2_data(users, items, ratings, self.train_ratio, self.randomizer, self.directed)
+        data = convert_2_data(users, items, ratings, self.train_ratio, self.randomizer)
 
         torch.save(self.collate([data]), self.processed_paths[0], pickle_protocol=4)
 
@@ -365,16 +365,12 @@ class MovieLens(InMemoryDataset):
 
     def build_suffix(self):
         suffixes = []
-        if self.directed:
-            suffixes.append('directed_')
         suffixes.append('core_{}'.format(self.num_core))
         suffixes.append('featcore_{}'.format(self.num_feat_core))
         if self.train_ratio is not None:
             suffixes.append('train_{}'.format(self.train_ratio))
         if self.seed is not None:
             suffixes.append('seed_{}'.format(self.seed))
-        if self.debug is not None:
-            suffixes.append('debug_{}'.format(self.debug))
         if not suffixes:
             suffix = ''
         else:
@@ -386,8 +382,7 @@ if __name__ == '__main__':
     import os.path as osp
     root = osp.join('.', 'tmp', 'ml')
     name = '1m'
-    debug = 0.01
     seed = 2020
-    dataset = MovieLens(root=root, name='1m', debug=debug, train_ratio=0.8, seed=seed)
+    dataset = MovieLens(root=root, name='1m', train_ratio=0.8, seed=seed)
     print('stop')
 
