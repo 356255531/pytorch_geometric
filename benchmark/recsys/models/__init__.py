@@ -1,10 +1,9 @@
 from .gat import KGGATNet
-from .gcn import KGGCNNet, GCNNet
+from .gcn import GCN
 from .pagagcn import PAGAGCN
 
 __all__ = [
     'KGGATNet',
-    'GCNNet',
-    'KGGCNNet',
+    'GCN',
     'PAGAGCN'
 ]

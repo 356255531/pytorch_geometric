@@ -18,11 +18,10 @@ def ndcg(hit_vec):
 
 def metrics(
         epoch,
-        model, x, meta_paths,
+        propagated_node_emb,
         test_pos_unid_inid_map, neg_unid_inid_map,
         rec_args):
     HR, NDCG, losses = [], [], []
-    propagated_node_emb = model(x, meta_paths)
 
     u_nids = list(test_pos_unid_inid_map.keys())
     test_bar = tqdm.tqdm(u_nids, total=len(u_nids))

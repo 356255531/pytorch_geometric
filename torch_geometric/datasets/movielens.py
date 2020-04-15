@@ -88,7 +88,7 @@ def drop_infrequent_concept_from_str(df, concept_name, num_occs):
 
 def convert_2_data(
         users, items, ratings,
-        train_ratio, randomizer,
+        train_ratio
 ):
     """
     Entitiy node include (gender, occupation, genres)
@@ -250,7 +250,7 @@ def convert_2_data(
     }
 
     if train_ratio is not None:
-        train_rating_idx = randomizer.sample(population=range(ratings.shape[0]), k=int(ratings.shape[0] * train_ratio))
+        train_rating_idx = rd.sample(population=range(ratings.shape[0]), k=int(ratings.shape[0] * train_ratio))
         test_rating_idx = list(set(range(ratings.shape[0])) - set(train_rating_idx))
 
         kwargs['train_edge_index_np'] = user2item_edge_index_np[:, train_rating_idx]
@@ -283,7 +283,6 @@ class MovieLens(InMemoryDataset):
         self.implicit = kwargs.get('implicit', True)
         self.train_ratio = kwargs.get('train_ratio', None)
         self.seed = kwargs.get('seed')
-        self.randomizer = kwargs.get('randomizer')
         self.suffix = self.build_suffix()
         super(MovieLens, self).__init__(root, transform, pre_transform, pre_filter)
 
@@ -368,7 +367,7 @@ class MovieLens(InMemoryDataset):
             save_df(items, join(self.processed_dir, 'movies.pkl'))
             save_df(ratings, join(self.processed_dir, 'ratings.pkl'))
 
-        data = convert_2_data(users, items, ratings, self.train_ratio, self.randomizer)
+        data = convert_2_data(users, items, ratings, self.train_ratio)
 
         torch.save(self.collate([data]), self.processed_paths[0], pickle_protocol=4)
 
