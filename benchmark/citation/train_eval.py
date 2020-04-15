@@ -74,7 +74,7 @@ def run(dataset, model, runs, epochs, lr, weight_decay, early_stopping,
                 print('Epoch {}, acc {}'.format(epoch, test_acc))
 
             val_loss_history.append(eval_info['val_loss'])
-            if early_stopping > 0 and epoch > epochs // 2:
+            if early_stopping > 0:
                 tmp = tensor(val_loss_history[-(early_stopping + 1):-1])
                 if eval_info['val_loss'] > tmp.mean().item():
                     break

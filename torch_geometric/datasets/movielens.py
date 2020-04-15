@@ -50,14 +50,14 @@ def reindex_df(users, items, interactions):
     return users, items, interactions
 
 
-def split_train_test_pos_neg_map(ratings, train_rating_idx, test_rating_mask, e2nid):
+def split_train_test_pos_neg_map(ratings, train_rating_mask, test_rating_mask, e2nid):
     uids = ratings.uid.unique()
     iids = ratings.iid.unique()
 
     pos_nid_iid_map = {uid: list(set(ratings[ratings.uid.isin([uid])].iid)) for uid in uids}
     neg_nid_iid_map = {uid: list(set(iids) - set(pos_iids)) for uid, pos_iids in pos_nid_iid_map.items()}
 
-    train_ratings = ratings.iloc[train_rating_idx]
+    train_ratings = ratings.iloc[train_rating_mask]
     test_ratings = ratings.iloc[test_rating_mask]
     train_pos_nid_iid_map = {uid: list(set(train_ratings[train_ratings.uid.isin([uid])].iid)) for uid in train_ratings.uid.unique()}
     test_pos_nid_iid_map = {uid: list(set(test_ratings[test_ratings.uid.isin([uid])].iid)) for uid in test_ratings.uid.unique()}
@@ -127,49 +127,63 @@ def convert_2_data(
     #########################  Define number of entities  #########################
     num_nodes = num_users + num_items + num_genders + num_occupations + num_ages + num_genres + num_years + \
                 num_directors + num_actors + num_writers
+    num_node_types = 10
 
     #########################  Define entities to node id map  #########################
+    x = []
     acc = 0
     uid2nid = {uid: i + acc for i, uid in enumerate(users['uid'])}
+    x += [[0] for _ in range(users['uid'].shape[0])]
     nid2e = {i + acc: ('uid', uid) for i, uid in enumerate(users['uid'])}
     acc += users.shape[0]
     iid2nid = {iid: i + acc for i, iid in enumerate(items['iid'])}
+    x += [[1] for _ in range(items['iid'].shape[0])]
     for i, iid in enumerate(items['iid']):
         nid2e[i + acc] = ('iid', iid)
     acc += items.shape[0]
     gender2nid = {gender: i + acc for i, gender in enumerate(genders)}
+    x += [[2] for _ in range(len(genders))]
     for i, gender in enumerate(genders):
         nid2e[i + acc] = ('gender', gender)
     acc += num_genders
     occ2nid = {occupation: i + acc for i, occupation in enumerate(occupations)}
+    x += [[3] for _ in range(len(occupations))]
     for i, occ in enumerate(occupations):
         nid2e[i + acc] = ('occ', occ)
     acc += num_occupations
     age2nid = {age: i + acc for i, age in enumerate(ages)}
+    x += [[4] for _ in range(len(ages))]
     for i, age in enumerate(ages):
         nid2e[i + acc] = ('age', age)
     acc += num_ages
     genre2nid = {genre: i + acc for i, genre in enumerate(genres)}
+    x += [[5] for _ in range(len(genres))]
     for i, genre in enumerate(genres):
         nid2e[i + acc] = ('genre', genre)
     acc += num_genres
     year2nid = {year: i + acc for i, year in enumerate(years)}
+    x += [[6] for _ in range(len(years))]
     for i, year in enumerate(years):
         nid2e[i + acc] = ('year', year)
     acc += num_years
     director2nid = {director: i + acc for i, director in enumerate(unique_directors)}
+    x += [[7] for _ in range(len(unique_directors))]
     for i, director in enumerate(unique_directors):
         nid2e[i + acc] = ('director', director)
     acc += num_directors
     actor2nid = {actor: i + acc for i, actor in enumerate(unique_actors)}
+    x += [[8] for _ in range(len(unique_actors))]
     for i, actor in enumerate(unique_actors):
         nid2e[i + acc] = ('actor', actor)
     acc += num_actors
     writer2nid = {writer: i + acc for i, writer in enumerate(unique_writers)}
+    x += [[9] for _ in range(len(unique_writers))]
     for i, writer in enumerate(unique_writers):
         nid2e[i + acc] = ('writer', writer)
     e2nid = {'uid': uid2nid, 'iid': iid2nid, 'gender': gender2nid, 'occ': occ2nid, 'age': age2nid, 'genre': genre2nid,
              'year': year2nid, 'director': director2nid, 'actor': actor2nid, 'writer': writer2nid}
+    x = torch.from_numpy(np.array(x))
+    x = torch.zeros(num_nodes, num_node_types).scatter(1, x.long(), 1)
 
     #########################  create graphs  #########################
     edge_index_nps = {}
@@ -230,24 +244,22 @@ def convert_2_data(
     user2item_edge_index_np = np.vstack((np.array(u_nids), np.array(i_nids)))
 
     kwargs = {
-        'num_nodes': num_nodes,
+        'x': x, 'num_nodes': num_nodes, 'num_node_types': num_node_types,
         'users': users, 'ratings': ratings, 'items': items,
-        'edge_index_nps': edge_index_nps,
         'e2nid': e2nid, 'nid2e': nid2e
     }
 
     if train_ratio is not None:
-        train_rating_mask = torch.zeros(ratings.shape[0], dtype=torch.bool)
-        test_rating_mask = torch.ones(ratings.shape[0], dtype=torch.bool)
         train_rating_idx = randomizer.sample(population=range(ratings.shape[0]), k=int(ratings.shape[0] * train_ratio))
-        train_rating_mask[train_rating_idx] = 1
-        test_rating_mask[train_rating_idx] = 0
+        test_rating_idx = list(set(range(ratings.shape[0])) - set(train_rating_idx))
 
-        kwargs['train_edge_index_np'] = user2item_edge_index_np[:, train_rating_mask]
-        kwargs['test_edge_index_np'] = user2item_edge_index_np[:, test_rating_mask]
+        kwargs['train_edge_index_np'] = user2item_edge_index_np[:, train_rating_idx]
+        kwargs['test_edge_index_np'] = user2item_edge_index_np[:, test_rating_idx]
+        edge_index_nps['user2item'] = user2item_edge_index_np
+        kwargs['edge_index_nps'] = edge_index_nps
 
         train_pos_unid_inid_map, test_pos_unid_inid_map, neg_unid_inid_map = \
-            split_train_test_pos_neg_map(ratings, train_rating_idx, test_rating_mask, e2nid)
+            split_train_test_pos_neg_map(ratings, train_rating_idx, test_rating_idx, e2nid)
         kwargs['train_pos_unid_inid_map'], kwargs['test_pos_unid_inid_map'], kwargs['neg_unid_inid_map'] = \
             train_pos_unid_inid_map, test_pos_unid_inid_map, neg_unid_inid_map
 
@@ -270,8 +282,8 @@ class MovieLens(InMemoryDataset):
         self.num_feat_core = kwargs.get('num_feat_core', 10)
         self.implicit = kwargs.get('implicit', True)
         self.train_ratio = kwargs.get('train_ratio', None)
-        self.seed = kwargs.get('seed', None)
-        self.randomizer = rd.Random() if self.seed is None else rd.Random(self.seed)
+        self.seed = kwargs.get('seed')
+        self.randomizer = kwargs.get('randomizer')
         self.suffix = self.build_suffix()
         super(MovieLens, self).__init__(root, transform, pre_transform, pre_filter)
 
@@ -306,7 +318,7 @@ class MovieLens(InMemoryDataset):
             items = items.fillna('')
             ratings = ratings.fillna('')
         else:
-            print('Read from raw data!')
+            print('Data frame not found in {}! Read from raw data!'.format(self.processed_dir))
             users, items, ratings = read_ml(unzip_raw_dir)
 
             print('Preprocessing...')
@@ -369,8 +381,7 @@ class MovieLens(InMemoryDataset):
         suffixes.append('featcore_{}'.format(self.num_feat_core))
         if self.train_ratio is not None:
             suffixes.append('train_{}'.format(self.train_ratio))
-        if self.seed is not None:
-            suffixes.append('seed_{}'.format(self.seed))
+        suffixes.append('seed_{}'.format(self.seed))
         if not suffixes:
             suffix = ''
         else:
