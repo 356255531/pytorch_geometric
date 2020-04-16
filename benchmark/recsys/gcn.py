@@ -108,13 +108,6 @@ if __name__ == '__main__':
         if torch.cuda.is_available():
             torch.cuda.synchronize()
 
-        model.eval()
-        HR, NDCG, loss = metrics(
-            0,
-            model(x, edge_index),
-            test_pos_unid_inid_map, neg_unid_inid_map,
-            rec_args)
-
         t_start = time.perf_counter()
         HR_history = []
         NDCG_history = []

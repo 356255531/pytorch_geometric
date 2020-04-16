@@ -253,9 +253,8 @@ def convert_2_data(
         train_rating_idx = rd.sample(population=range(ratings.shape[0]), k=int(ratings.shape[0] * train_ratio))
         test_rating_idx = list(set(range(ratings.shape[0])) - set(train_rating_idx))
 
-        kwargs['train_edge_index_np'] = user2item_edge_index_np[:, train_rating_idx]
         kwargs['test_edge_index_np'] = user2item_edge_index_np[:, test_rating_idx]
-        edge_index_nps['user2item'] = user2item_edge_index_np
+        edge_index_nps['user2item'] = user2item_edge_index_np[:, train_rating_idx]
         kwargs['edge_index_nps'] = edge_index_nps
 
         train_pos_unid_inid_map, test_pos_unid_inid_map, neg_unid_inid_map = \
