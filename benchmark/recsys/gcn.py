@@ -25,7 +25,7 @@ parser.add_argument("--dropout", type=float, default=0.5, help="")
 parser.add_argument("--repr_dim", type=int, default=16, help="")
 parser.add_argument("--hidden_size", type=int, default=64, help="")
 # Train params
-parser.add_argument("--device", type=str, default='cpu', help="")
+parser.add_argument("--device", type=str, default='cuda', help="")
 parser.add_argument("--gpu_idx", type=str, default='0', help="")
 parser.add_argument("--runs", type=int, default=100, help="")
 parser.add_argument("--epochs", type=int, default=1000, help="")
@@ -91,7 +91,7 @@ if __name__ == '__main__':
         data = dataset.data.to(device)
         train_pos_unid_inid_map, test_pos_unid_inid_map, neg_unid_inid_map = \
             data.train_pos_unid_inid_map[0], data.test_pos_unid_inid_map[0], data.neg_unid_inid_map[0]
-        edge_index_np = np.hstack(list(data.edge_index_nps.values()))
+        edge_index_np = np.hstack(list(data.edge_index_nps[0].values()))
         edge_index_np = np.hstack([edge_index_np, np.flip(edge_index_np, 0)])
         edge_index = torch.from_numpy(edge_index_np).long().to(train_args['device'])
         x = data.x
@@ -107,6 +107,13 @@ if __name__ == '__main__':
         )
         if torch.cuda.is_available():
             torch.cuda.synchronize()
+
+        model.eval()
+        HR, NDCG, loss = metrics(
+            0,
+            model(x, edge_index),
+            test_pos_unid_inid_map, neg_unid_inid_map,
+            rec_args)
 
         t_start = time.perf_counter()
         HR_history = []
