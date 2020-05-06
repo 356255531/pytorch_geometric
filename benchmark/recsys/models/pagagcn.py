@@ -5,7 +5,6 @@ from torch_geometric.nn import GCNConv
 from torch_scatter import scatter_add
 from torch_geometric.utils import add_remaining_self_loops
 import torch_sparse
-import numpy as np
 import functools
 
 

@@ -43,6 +43,17 @@ PATH_LENGTHS = [1]
 
 
 def get_meta_path(edge_index_nps, device):
+    """
+    [[1, 0],
+    [0, 1]]
+    [
+        [0, 3],
+        [0, 3]
+    ]
+    :param edge_index_nps:
+    :param device:
+    :return:
+    """
     meta_path_1 = np.concatenate(list(edge_index_nps.values()), axis=1)
     meta_path_1 = [np.concatenate((meta_path_1, np.flip(meta_path_1, axis=0).copy()), axis=1)]
     # meta_path_2 = [edge_index_nps['user2item'], np.flip(edge_index_nps['user2item'], axis=0).copy()]

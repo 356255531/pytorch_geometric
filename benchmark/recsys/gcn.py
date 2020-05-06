@@ -9,9 +9,12 @@ import tqdm
 import random as rd
 import pandas as pd
 
-from utils import get_folder_path
+from utils import get_folder_path, save_model, load_model, save_global_logger, load_global_logger
 from models import GCN
 from utils import metrics
+
+
+MODEL = 'GCN'
 
 parser = argparse.ArgumentParser()
 # Dataset params
@@ -35,16 +38,18 @@ parser.add_argument("--batch_size", type=int, default=4, help="")
 parser.add_argument("--lr", type=float, default=1e-4, help="")
 parser.add_argument("--weight_decay", type=float, default=1e-3, help="")
 parser.add_argument("--early_stopping", type=int, default=40, help="")
+parser.add_argument("--save_epochs", type=list, default=[10, 20, 30], help="")
+parser.add_argument("--save_every_epoch", type=int, default=30, help="")
+
+
 # Recommender params
 parser.add_argument("--num_recs", type=int, default=10, help="")
 args = parser.parse_args()
 
-PATH_LENGTHS = [1]
-
 
 # Setup data and weights file path
 data_folder, weights_folder, logger_folder = \
-    get_folder_path(model='GCN', dataset=args.dataset + args.dataset_name)
+    get_folder_path(model=MODEL, dataset=args.dataset + args.dataset_name)
 
 # Setup device
 if not torch.cuda.is_available() or args.device == 'cpu':
@@ -66,7 +71,10 @@ train_args = {
     'opt': args.opt, 'loss': args.loss,
     'runs': args.runs, 'epochs': args.epochs, 'batch_size': args.batch_size,
     'weight_decay': args.weight_decay, 'lr': args.lr, 'device': device,
-    'weights_folder': weights_folder, 'logger_folder': logger_folder}
+    'weights_folder': os.path.join(weights_folder, str(model_args)),
+    'logger_folder': os.path.join(logger_folder, str(model_args)),
+    'save_epochs': args.save_epochs, 'save_every_epoch': args.save_every_epoch
+}
 rec_args = {
     'num_recs': args.num_recs
 }
@@ -77,18 +85,20 @@ print('rec params: {}'.format(rec_args))
 
 
 if __name__ == '__main__':
-    HR_per_run = []
-    NDCG_per_run = []
-    for run in range(1, train_args['runs'] + 1):
-        seed = 2020 + run
+    global_logger_path = os.path.join(train_args['logger_folder'], 'global_logger.pkl')
+    HR_per_run, NDCG_per_run, ROC_per_run, loss_per_run, start_run = load_global_logger(global_logger_path)
+    for run in range(start_run, train_args['runs'] + 1):
+        # Fix the random seed
+        seed = 2019 + run
         rd.seed(seed)
         np.random.seed(seed)
         torch.manual_seed(seed)
         torch.cuda.manual_seed(seed)
 
+        # Create the dataset
         dataset_args['seed'] = seed
         dataset = MovieLens(**dataset_args)
-        data = dataset.data.to(device)
+        data = dataset.data.to(train_args['device'])
         train_pos_unid_inid_map, test_pos_unid_inid_map, neg_unid_inid_map = \
             data.train_pos_unid_inid_map[0], data.test_pos_unid_inid_map[0], data.neg_unid_inid_map[0]
         edge_index_np = np.hstack(list(data.edge_index_nps[0].values()))
@@ -96,6 +106,7 @@ if __name__ == '__main__':
         edge_index = torch.from_numpy(edge_index_np).long().to(train_args['device'])
         x = data.x
 
+        # Create model and optimizer
         model_args['emb_dim'] = data.num_node_types
         model_args['num_nodes'] = data.x.shape[0]
         model = GCN(**model_args).to(train_args['device'])
@@ -105,14 +116,28 @@ if __name__ == '__main__':
             lr=train_args['lr'],
             weight_decay=train_args['weight_decay']
         )
+
+        # Load models
+        weightpath = os.path.join(train_args['weights_folder'], 'run' + str(run), 'latest.pkl')
+        model, optimizer, epoch, rec_metrics = load_model(weightpath, model, optimizer, train_args['device'])
+        start_epoch = epoch + 1
+        HR_history, NDCG_history, AUC_history, loss_history = rec_metrics if rec_metrics is not None else ([], [], [])
+
         if torch.cuda.is_available():
             torch.cuda.synchronize()
 
+        # Evaluate the random initialized model
+        if start_epoch == 1:
+            HR_before, NDCG_before, AUC_before, loss_before = metrics(
+                start_epoch,
+                model(x, edge_index),
+                test_pos_unid_inid_map, neg_unid_inid_map,
+                rec_args)
+            print('Initial performance: HR: {:.4f}, NDCG: {:.4f}, ROC: {:.4f} Loss: {:.4f}'.format(HR_before, NDCG_before, AUC_before, loss_before))
+
+        # Start training model
         t_start = time.perf_counter()
-        HR_history = []
-        NDCG_history = []
-        loss_history = []
-        for epoch in range(1, train_args['epochs'] + 1):
+        for epoch in range(start_epoch, train_args['epochs'] + 1):
             model.train()
             epoch_losses = []
             u_nids = list(train_pos_unid_inid_map.keys())
@@ -120,6 +145,7 @@ if __name__ == '__main__':
             train_bar = tqdm.tqdm(u_nids, total=len(u_nids))
             for u_idx, u_nid in enumerate(train_bar):
                 pos_i_nids = train_pos_unid_inid_map[u_nid]
+                # TODO: negative sampling
                 neg_i_nids = neg_unid_inid_map[u_nid] + test_pos_unid_inid_map[u_nid]
                 if len(pos_i_nids) == 0 or len(neg_i_nids) == 0:
                     continue
@@ -143,23 +169,34 @@ if __name__ == '__main__':
                 epoch_losses.append(loss.cpu().item())
                 train_bar.set_description('Epoch {} and user {} loss {:.4f}'.format(epoch, u_idx,  np.mean(epoch_losses)))
 
+            if epoch in train_args['save_epochs']:
+                weightpath = os.path.join(train_args['weights_folder'], '{}.pkl'.format(epoch))
+                save_model(weightpath, model, optimizer, epoch, rec_metrics=(HR_history, NDCG_history, loss_history))
+            if epoch > train_args['save_every_epoch']:
+                weightpath = os.path.join(train_args['weights_folder'], 'latest.pkl')
+                save_model(weightpath, model, optimizer, epoch, rec_metrics=(HR_history, NDCG_history, loss_history))
+
             model.eval()
-            HR, NDCG, loss = metrics(
+            HR, NDCG, ROC, loss = metrics(
                 epoch,
                 model(x, edge_index),
                 test_pos_unid_inid_map, neg_unid_inid_map,
                 rec_args)
 
-            print('Epoch: {}, HR: {:.4f}, NDCG: {:.4f}, Loss: {:.4f}'.format(epoch, HR, NDCG, loss))
+            print('Epoch: {}, HR: {:.4f}, NDCG: {:.4f}, ROC: {:.4f} Loss: {:.4f}'.format(epoch, HR, NDCG, ROC, loss))
 
         if torch.cuda.is_available():
             torch.cuda.synchronize()
         t_end = time.perf_counter()
 
-        print('Duration: {:.4f}, HR: {}, NDCG: {:.4f}, loss: {:.4f}'.format(t_end - t_start, np.mean(HR_history), np.mean(NDCG_history), np.mean(loss_history)))
+        HR_per_run.append(HR)
+        NDCG_per_run.append(NDCG)
+        ROC_per_run.append(ROC)
 
-        if not os.path.isdir(weights_folder):
-            os.mkdir(weights_folder)
-        weights_path = os.path.join(weights_folder, 'weights{}.pkl'.format(dataset.build_suffix()))
-        torch.save(model.state_dict(), weights_path)
-
+        print('Run {}, Duration: {:.4f}, HR: {}, NDCG: {:.4f}, ROC: {:.4f} loss: {:.4f}'.format(run, t_end - t_start, HR, NDCG, ROC, loss))
+    print(
+        'Overall HR: {}, NDCG: {:.4f}, AUC: {:.4f}, loss: {:.4f}'.format(
+            np.mean(HR_per_run), np.mean(NDCG_per_run), np.mean(ROC_per_run), np.mean(loss_per_run)
+        )
+    )
+    save_global_logger(global_logger_path, HR_per_run, NDCG_per_run, ROC_per_run, loss_per_run)

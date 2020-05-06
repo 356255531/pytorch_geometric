@@ -60,6 +60,7 @@ def read_ml(dir):
 
     pbar = tqdm.tqdm(zip(movies.title, movies.year), total=movies.shape[0])
     for i, (title, year) in enumerate(pbar):
+        pbar.set_description('Get item resources')
         if i in range(0, 1000):
             apikey = key1
         if i in range(1000, 2000):
@@ -82,9 +83,9 @@ def read_ml(dir):
             except:
                 movie_info_dic = dict()
 
-        director = ', '.join(movie_info_dic.get('Director', '').split(', '))
-        actor = ', '.join(movie_info_dic.get('Actors', '').split(', '))
-        writer = ', '.join(movie_info_dic.get('Writer', '').split(', '))
+        director = movie_info_dic.get('Director', '')
+        actor = movie_info_dic.get('Actors', '')
+        writer = movie_info_dic.get('Writer', '')
         # poster = movie_info_dic.get('Poster', None)
 
         directors_strs.append(director)
