@@ -2,6 +2,7 @@ import argparse
 import torch
 import os
 import numpy as np
+import random as rd
 
 from models import GCN
 from utils import get_folder_path
@@ -29,16 +30,15 @@ parser.add_argument("--epochs", type=int, default=100, help="")
 parser.add_argument("--opt", type=str, default='adam', help="")
 parser.add_argument("--loss", type=str, default='mse', help="")
 parser.add_argument("--batch_size", type=int, default=4, help="")
-parser.add_argument("--lr", type=float, default=1e-3, help="")
+parser.add_argument("--lr", type=float, default=1e-4, help="")
 parser.add_argument("--weight_decay", type=float, default=1e-3, help="")
-parser.add_argument("--early_stopping", type=int, default=40, help="")
-parser.add_argument("--save_epochs", type=list, default=[50, 80, 100], help="")
-parser.add_argument("--save_every_epoch", type=int, default=120, help="")
+parser.add_argument("--early_stopping", type=int, default=60, help="")
+parser.add_argument("--save_epochs", type=list, default=[10, 40, 80], help="")
+parser.add_argument("--save_every_epoch", type=int, default=40, help="")
 
 
 # Recommender params
 parser.add_argument("--init_eval", type=bool, default=True, help="")
-parser.add_argument("--num_recs", type=int, default=10, help="")
 args = parser.parse_args()
 
 
@@ -63,25 +63,21 @@ model_args = {
     'repr_dim': args.repr_dim, 'dropout': args.dropout
 }
 train_args = {
-    'opt': args.opt, 'loss': args.loss,
+    'opt': args.opt, 'loss': args.loss, 'init_eval': args.init_eval,
     'runs': args.runs, 'epochs': args.epochs, 'batch_size': args.batch_size,
     'weight_decay': args.weight_decay, 'lr': args.lr, 'device': device,
     'weights_folder': os.path.join(weights_folder, str(model_args)),
     'logger_folder': os.path.join(logger_folder, str(model_args)),
     'save_epochs': args.save_epochs, 'save_every_epoch': args.save_every_epoch
 }
-rec_args = {
-    'init_eval': args.init_eval, 'num_recs': args.num_recs
-}
 print('dataset params: {}'.format(dataset_args))
 print('task params: {}'.format(model_args))
 print('train params: {}'.format(train_args))
-print('rec params: {}'.format(rec_args))
 
 
 class GCNSolver(BaseSolver):
-    def __init__(self, GCN, dataset_args, model_args, train_args, rec_args):
-        super(GCNSolver, self).__init__(GCN, dataset_args, model_args, train_args, rec_args)
+    def __init__(self, GCN, dataset_args, model_args, train_args):
+        super(GCNSolver, self).__init__(GCN, dataset_args, model_args, train_args)
 
     def prepare_model_input(self, data):
         edge_index_np = np.hstack(list(data.edge_index_nps[0].values()))
@@ -91,15 +87,34 @@ class GCNSolver(BaseSolver):
 
         return {'edge_index': edge_index, 'x': x}
 
-    def train_negative_sampling(self, train_pos_unid_inid_map, test_pos_unid_inid_map, neg_unid_inid_map, u_nid):
-        return neg_unid_inid_map[u_nid] + test_pos_unid_inid_map[u_nid]
+    def train_negative_sampling(self, u_nid, train_pos_unid_inid_map, test_pos_unid_inid_map, neg_unid_inid_map, data):
+        """
+        Unliked popular movie negative sampling:
+        :param u_nid:
+        :param train_pos_unid_inid_map:
+        :param test_pos_unid_inid_map:
+        :param neg_unid_inid_map:
+        :param data:
+        :return:
+        """
+        num_pos_samples = len(train_pos_unid_inid_map[u_nid])
 
-    def eval_sampling(self, train_pos_unid_inid_map, test_pos_unid_inid_map, neg_unid_inid_map, u_nid):
+        negative_inids = test_pos_unid_inid_map[u_nid] + neg_unid_inid_map[u_nid]
+        nid_occs = np.array([data.item_nid_occs[0][nid] for nid in negative_inids])
+        nid_occs = nid_occs / np.sum(nid_occs)
+        negative_inids = rd.choices(population=negative_inids, weights=nid_occs, k=num_pos_samples)
+
+        return negative_inids
+
+    def generate_candidates(self, train_pos_unid_inid_map, test_pos_unid_inid_map, neg_unid_inid_map, u_nid):
         pos_i_nids = test_pos_unid_inid_map[u_nid]
-        neg_i_nids = neg_unid_inid_map[u_nid]
-        return pos_i_nids, neg_i_nids
+        neg_i_nids = np.array(neg_unid_inid_map[u_nid])
+
+        neg_i_nids_indices = np.array(rd.sample(range(neg_i_nids.shape[0]), 99), dtype=int)
+
+        return pos_i_nids, list(neg_i_nids[neg_i_nids_indices])
 
 
 if __name__ == '__main__':
-    solver = GCNSolver(GCN, dataset_args, model_args, train_args, rec_args)
+    solver = GCNSolver(GCN, dataset_args, model_args, train_args)
     solver.run()

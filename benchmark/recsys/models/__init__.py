@@ -1,5 +1,5 @@
 from .gcn import GCN
-from .pagagcn import PAGAGCN
+from .pagagcn_old import PAGAGCN
 
 __all__ = [
     'GCN',

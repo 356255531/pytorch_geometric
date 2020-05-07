@@ -6,6 +6,7 @@ import pandas as pd
 import random as rd
 import itertools
 from collections import Counter
+import tqdm
 
 from torch_geometric.data import InMemoryDataset, download_url
 from torch_geometric.io import read_ml
@@ -253,31 +254,55 @@ def convert_2_data(
     edge_index_nps['actor2user'] = actor2user_edge_index_np
     edge_index_nps['writer2user'] = writer2user_edge_index_np
 
-    print('Creating rating property edges...')
-    u_nids = [e2nid['uid'][uid] for uid in ratings.uid]
-    i_nids = [e2nid['iid'][iid] for iid in ratings.iid]
-    user2item_edge_index_np = np.vstack((np.array(u_nids), np.array(i_nids)))
-
     kwargs = {
         'x': x, 'num_nodes': num_nodes, 'num_node_types': num_node_types,
         'users': users, 'ratings': ratings, 'items': items,
         'e2nid': e2nid, 'nid2e': nid2e
     }
 
+    print('Creating rating property edges...')
     if train_ratio is not None:
-        train_rating_idx = rd.sample(population=range(ratings.shape[0]), k=int(ratings.shape[0] * train_ratio))
-        test_rating_idx = list(set(range(ratings.shape[0])) - set(train_rating_idx))
+        train_pos_unid_inid_map, test_pos_unid_inid_map, neg_unid_inid_map = {}, {}, {}
+        item_nid_occs = {}
 
-        edge_index_nps['user2item'] = user2item_edge_index_np[:, train_rating_idx]
+        user2item_edge_index_np = np.zeros((2, 0))
+        pbar = tqdm.tqdm(users.uid, total=users.uid.shape[0])
+        for uid in pbar:
+            pbar.set_description('Creating the edges for the user {}'.format(uid))
+            uid_ratings = ratings[ratings.uid == uid].sort_values('timestamp')
+            uid_iids = uid_ratings[['iid']].to_numpy().reshape(-1)
+
+            unid = e2nid['uid'][uid]
+            train_pos_uid_iids = list(uid_iids[:-1])
+            train_pos_uid_inids = [e2nid['iid'][iid] for iid in train_pos_uid_iids]
+            test_pos_uid_iids = list(uid_iids[-1:])
+            test_pos_uid_inids = [e2nid['iid'][iid] for iid in test_pos_uid_iids]
+            neg_uid_iids = list(set(items.iid) - set(uid_iids))
+            neg_uid_inids = [e2nid['iid'][iid] for iid in neg_uid_iids]
+
+            train_pos_unid_inid_map[unid] = train_pos_uid_inids
+            test_pos_unid_inid_map[unid] = test_pos_uid_inids
+            neg_unid_inid_map[unid] = neg_uid_inids
+
+            unid_user2item_edge_index_np = np.array([[unid for _ in range(len(train_pos_uid_inids))], train_pos_uid_inids])
+            user2item_edge_index_np = np.hstack([user2item_edge_index_np, unid_user2item_edge_index_np])
+        edge_index_nps['user2item'] = user2item_edge_index_np
         kwargs['edge_index_nps'] = edge_index_nps
 
-        train_pos_unid_inid_map, test_pos_unid_inid_map, neg_unid_inid_map = \
-            split_train_test_pos_neg_map(ratings, train_rating_idx, test_rating_idx, e2nid)
         kwargs['train_pos_unid_inid_map'], kwargs['test_pos_unid_inid_map'], kwargs['neg_unid_inid_map'] = \
             train_pos_unid_inid_map, test_pos_unid_inid_map, neg_unid_inid_map
     else:
+        u_nids = [e2nid['uid'][uid] for uid in ratings.uid]
+        i_nids = [e2nid['iid'][iid] for iid in ratings.iid]
+        user2item_edge_index_np = np.vstack((np.array(u_nids), np.array(i_nids)))
         edge_index_nps['user2item'] = user2item_edge_index_np
         kwargs['edge_index_nps'] = edge_index_nps
+
+    print('Building the item occurence map...')
+    item_nid_occs = {}
+    for iid in items.iid:
+        item_nid_occs[e2nid['iid'][iid]] = ratings[ratings.iid == iid].iloc[0]['movie_count']
+    kwargs['item_nid_occs'] = item_nid_occs
     return Data(**kwargs)
 
 

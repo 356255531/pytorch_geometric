@@ -1,21 +1,39 @@
 import numpy as np
 from sklearn.metrics import ndcg_score
 from sklearn.metrics import roc_auc_score
+from itertools import product
+
+NUM_RECS_RANGE = 20
 
 
 def hit(hit_vec_np):
-    if np.sum(hit_vec_np) > 0:
-        return 1
-    else:
-        return 0
+    HRatK = []
+    for num_recs in range(5, NUM_RECS_RANGE + 1):
+        if np.sum(hit_vec_np[: num_recs]) > 0:
+            HRatK.append(1)
+        else:
+            HRatK.append(0)
+
+    return HRatK
 
 
 def ndcg(hit_vec_np):
-    num_recs = hit_vec_np.shape[0]
-    return ndcg_score(hit_vec_np.reshape(1, -1), np.ones((1, num_recs)))
+    NDCGatK = []
+    for num_recs in range(5, NUM_RECS_RANGE + 1):
+        hit_vec_atK_np = np.array(hit_vec_np[: num_recs], dtype=np.int)
+        hit_vec_atK_np = hit_vec_atK_np.reshape(1, -1)
+        NDCGatK.append(
+            ndcg_score(
+                hit_vec_atK_np,
+                np.ones_like(hit_vec_atK_np)
+            )
+        )
+
+    return NDCGatK
 
 
-def auc(hit_vec_np):
-    num_recs = hit_vec_np.shape[0]
-    return roc_auc_score(hit_vec_np, np.ones(num_recs))
+def auc(preds_pos, preds_neg):
+    product_comp = [1 if p_pred > n_pred else 0 for p_pred, n_pred in product(preds_pos, preds_neg)]
+    return np.mean(product_comp)
+
 

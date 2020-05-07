@@ -2,6 +2,7 @@ import os.path as osp
 import torch
 import os
 import pickle
+import numpy as np
 
 
 from torch_geometric.datasets import *
@@ -52,7 +53,7 @@ def load_model(file_path, model, optim, device):
     else:
         print("No checkpoint_backup found at '{}'".format(file_path))
         epoch = 0
-        rec_metrics = [], [], [], [], []
+        rec_metrics = np.zeros((0, 16)), np.zeros((0, 16)), np.zeros((0, 1)), np.zeros((0, 1)), np.zeros((0, 1))
 
     return model, optim, epoch, rec_metrics
 
@@ -72,12 +73,13 @@ def save_global_logger(
 def load_global_logger(global_logger_filepath):
     if os.path.isfile(global_logger_filepath):
         with open(global_logger_filepath, 'rb') as f:
-            HR_per_run, NDCG_per_run, ROC_per_run, train_loss_per_run, eval_loss_per_run = pickle.load(f)
+            HRs_per_run, NDCGs_per_run, AUC_per_run, train_loss_per_run, eval_loss_per_run = pickle.load(f)
     else:
         print("No logger found at '{}'".format(global_logger_filepath))
-        HR_per_run, NDCG_per_run, ROC_per_run, train_loss_per_run, eval_loss_per_run = [], [], [], [], []
+        HRs_per_run, NDCGs_per_run, AUC_per_run, train_loss_per_run, eval_loss_per_run = \
+            np.zeros((0, 16)), np.zeros((0, 16)), np.zeros((0, 1)), np.zeros((0, 1)), np.zeros((0, 1))
 
-    return HR_per_run, NDCG_per_run, ROC_per_run, train_loss_per_run, eval_loss_per_run, len(HR_per_run)
+    return HRs_per_run, NDCGs_per_run, AUC_per_run, train_loss_per_run, eval_loss_per_run, HRs_per_run.shape[0]
 
 
 def load_dataset(dataset_args):

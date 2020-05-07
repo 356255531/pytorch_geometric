@@ -1,4 +1,5 @@
 import torch
+from torch import nn
 import torch.nn.functional as F
 from torch_geometric.nn import GCNConv
 from torch_scatter import scatter_add
@@ -7,8 +8,44 @@ import torch_sparse
 import functools
 
 
+class ConvEncoder(nn.Module):
+    def __init__(self, in_channel):
+        super(ConvEncoder, self).__init__()
+        self.conv1 = nn.Conv2d(in_channel, 16, 3, padding=1)
+        self.conv2 = nn.Conv2d(16, 4, 3, padding=2)
+        self.pool = nn.MaxPool2d(2, 2)
+
+        self.t_conv1 = nn.ConvTranspose2d(4, 16, 2, stride=2)
+        self.t_conv2 = nn.ConvTranspose2d(16, in_channel, 2, stride=2)
+
+        self.relu = torch.nn.ReLU()
+        self.sigmoid = torch.nn.Sigmoid()
+
+    def forward(self, x):
+        x = self.relu(self.conv1(x))
+        x = self.pool(x)
+        x = self.relu(self.conv2(x))
+        x = self.pool(x)
+        x = self.relu(self.t_conv1(x))
+        x = self.sigmoid(self.t_conv2(x))
+        return x
+
+    def reset_parameters(self):
+        torch.nn.init.xavier_normal_(self.conv1.weight)
+        torch.nn.init.xavier_normal_(self.conv2.weight)
+        torch.nn.init.xavier_normal_(self.t_conv1.weight)
+        torch.nn.init.xavier_normal_(self.t_conv2.weight)
+
+
+    def reset_parameters(self):
+        torch.nn.init.xavier_normal_(self.conv1.weight)
+        torch.nn.init.xavier_normal_(self.conv2.weight)
+        torch.nn.init.xavier_normal_(self.t_conv1.weight)
+        torch.nn.init.xavier_normal_(self.t_conv2.weight)
+
+
 class PAGAGCN(torch.nn.Module):
-    def __init__(self, num_nodes, emb_dim, hidden_size, repr_dim, dropout):
+    def __init__(self, num_nodes, emb_dim, hidden_size, repr_dim, dropout, path_lengths):
         super(PAGAGCN, self).__init__()
         self.num_nodes = num_nodes
         self.dropout = dropout
