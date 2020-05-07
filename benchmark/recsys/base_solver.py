@@ -21,14 +21,36 @@ class BaseSolver(object):
 
     @abstractmethod
     def prepare_model_input(self, data):
+        """
+        Get the model input such as x or edge_index from torch_geometric.data
+        :param data:
+        :return:
+        """
         pass
 
     @abstractmethod
     def train_negative_sampling(self, u_nid, train_pos_unid_inid_map, test_pos_unid_inid_map, neg_unid_inid_map, data):
+        """
+        Extract the negative samples from data
+        :param u_nid:
+        :param train_pos_unid_inid_map:
+        :param test_pos_unid_inid_map:
+        :param neg_unid_inid_map:
+        :param data:
+        :return:
+        """
         pass
 
     @abstractmethod
     def generate_candidates(self, train_pos_unid_inid_map, test_pos_unid_inid_map, neg_unid_inid_map, u_nid):
+        """
+        Generate the candidates for evaluation
+        :param train_pos_unid_inid_map:
+        :param test_pos_unid_inid_map:
+        :param neg_unid_inid_map:
+        :param u_nid:
+        :return:
+        """
         pass
 
     def metrics(
@@ -38,14 +60,27 @@ class BaseSolver(object):
             propagated_node_emb,
             train_pos_unid_inid_map, test_pos_unid_inid_map, neg_unid_inid_map
     ):
+        """
+        Compute the usual metrics for recommendation system (Hit rate, NDCG and AUC)
+        :param run:
+        :param epoch:
+        :param propagated_node_emb:
+        :param train_pos_unid_inid_map:
+        :param test_pos_unid_inid_map:
+        :param neg_unid_inid_map:
+        :return:
+        """
         HRs, NDCGs, AUC, eval_losses = np.zeros((0, 16)), np.zeros((0, 16)), np.zeros((0, 1)), np.zeros((0, 1))
 
         u_nids = list(test_pos_unid_inid_map.keys())
         test_bar = tqdm.tqdm(u_nids, total=len(u_nids))
         for u_idx, u_nid in enumerate(test_bar):
-            pos_i_nids, neg_i_nids = self.generate_candidates(train_pos_unid_inid_map, test_pos_unid_inid_map, neg_unid_inid_map, u_nid)
+            pos_i_nids, neg_i_nids = self.generate_candidates(
+                train_pos_unid_inid_map, test_pos_unid_inid_map, neg_unid_inid_map, u_nid
+            )
+
             if len(pos_i_nids) == 0 or len(neg_i_nids) == 0:
-                continue
+                raise ValueError("No pos or neg samples found in evaluation!")
             pos_i_nid_df = pd.DataFrame({'u_nid': [u_nid for _ in range(len(pos_i_nids))], 'pos_i_nid': pos_i_nids})
             neg_i_nid_df = pd.DataFrame({'u_nid': [u_nid for _ in range(len(neg_i_nids))], 'neg_i_nid': neg_i_nids})
             pos_neg_pair_np = pd.merge(pos_i_nid_df, neg_i_nid_df, how='inner', on='u_nid').to_numpy()
@@ -64,7 +99,7 @@ class BaseSolver(object):
             pred_pos = (u_node_emb * pos_i_node_emb).sum(dim=1)
             pred_neg = (u_node_emb * neg_i_node_emb).sum(dim=1)
 
-            sorted, indices = torch.sort(torch.cat([pred_pos, pred_neg]), descending=True)
+            _, indices = torch.sort(torch.cat([pred_pos, pred_neg]), descending=True)
             hit_vec = (indices < len(pos_i_nids)).cpu().detach().numpy()
             pred_pos = pred_pos.cpu().detach().numpy()
             pred_neg = pred_neg.cpu().detach().numpy()
@@ -191,7 +226,11 @@ class BaseSolver(object):
                                 pred_pos = (u_node_emb * pos_i_node_emb).sum(dim=1)
                                 pred_neg = (u_node_emb * neg_i_node_emb).sum(dim=1)
                                 loss = - (pred_pos - pred_neg).sigmoid().log().mean()
-                                loss.backward()
+                                try:
+                                    loss.backward()
+                                except:
+                                    import pdb
+                                    pdb.set_trace()
                                 optimizer.step()
                                 optimizer.zero_grad()
 

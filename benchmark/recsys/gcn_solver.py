@@ -38,7 +38,7 @@ parser.add_argument("--save_every_epoch", type=int, default=40, help="")
 
 
 # Recommender params
-parser.add_argument("--init_eval", type=bool, default=True, help="")
+parser.add_argument("--init_eval", type=bool, default=False, help="")
 args = parser.parse_args()
 
 
@@ -102,7 +102,7 @@ class GCNSolver(BaseSolver):
         negative_inids = test_pos_unid_inid_map[u_nid] + neg_unid_inid_map[u_nid]
         nid_occs = np.array([data.item_nid_occs[0][nid] for nid in negative_inids])
         nid_occs = nid_occs / np.sum(nid_occs)
-        negative_inids = rd.choices(population=negative_inids, weights=nid_occs, k=num_pos_samples)
+        negative_inids = rd.choices(population=negative_inids, weights=nid_occs, k=num_pos_samples * 5)
 
         return negative_inids
 

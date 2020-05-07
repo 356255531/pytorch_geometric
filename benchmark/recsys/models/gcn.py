@@ -12,6 +12,8 @@ class GCN(torch.nn.Module):
         self.conv1 = GCNConv(emb_dim, hidden_size)
         self.conv2 = GCNConv(hidden_size, repr_dim)
 
+        self.reset_parameters()
+
     def reset_parameters(self):
         self.conv1.reset_parameters()
         self.conv2.reset_parameters()
