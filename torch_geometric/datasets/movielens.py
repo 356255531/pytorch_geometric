@@ -3,7 +3,6 @@ from os.path import join
 from os.path import isfile
 import numpy as np
 import pandas as pd
-import random as rd
 import itertools
 from collections import Counter
 import tqdm
@@ -54,46 +53,16 @@ def reindex_df(users, items, interactions):
     return users, items, interactions
 
 
-def split_train_test_pos_neg_map(ratings, train_rating_mask, test_rating_mask, e2nid):
-    """
-    Split the ratings into train and test set
-    :param ratings:
-    :param train_rating_mask:
-    :param test_rating_mask:
-    :param e2nid:
-    :return:
-    """
-    unique_uids = ratings.uid.unique()
-    unique_iids = ratings.iid.unique()
-
-    pos_nid_iid_map = {uid: list(ratings[ratings.uid.isin([uid])].iid.unique()) for uid in unique_uids}
-    neg_nid_iid_map = {uid: list(set(unique_iids) - set(pos_iids)) for uid, pos_iids in pos_nid_iid_map.items()}
-
-    train_ratings = ratings.iloc[train_rating_mask]
-    test_ratings = ratings.iloc[test_rating_mask]
-    train_pos_nid_iid_map = {uid: list(train_ratings[train_ratings.uid.isin([uid])].iid.unique()) for uid in train_ratings.uid.unique()}
-    test_pos_nid_iid_map = {uid: list(test_ratings[test_ratings.uid.isin([uid])].iid.unique()) for uid in test_ratings.uid.unique()}
-
-    train_pos_unid_inid_map = {e2nid['uid'][uid]: [e2nid['iid'][iid] for iid in iids] for uid, iids in train_pos_nid_iid_map.items()}
-    test_pos_unid_inid_map = {e2nid['uid'][uid]: [e2nid['iid'][iid] for iid in iids] for uid, iids in test_pos_nid_iid_map.items()}
-    neg_unid_inid_map = {e2nid['uid'][uid]: [e2nid['iid'][iid] for iid in iids] for uid, iids in neg_nid_iid_map.items()}
-
-    return train_pos_unid_inid_map, test_pos_unid_inid_map, neg_unid_inid_map
-
-
 def drop_infrequent_concept_from_str(df, concept_name, num_occs):
-    def filter_concept_str(concept_str):
-        concept_entires = [single_concept_entry.split(' (')[0] for single_concept_entry in concept_str.split(', ')]
-        return ','.join(concept_entires)
-    concept_strs = [filter_concept_str(concept_str) for concept_str in df[concept_name]]
-    duplicated_concept = [concept_str.split(', ') for concept_str in concept_strs]
+    concept_strs = [concept_str for concept_str in df[concept_name]]
+    duplicated_concept = [concept_str.split(',') for concept_str in concept_strs]
     duplicated_concept = list(itertools.chain.from_iterable(duplicated_concept))
     writer_counter_dict = Counter(duplicated_concept)
     del writer_counter_dict['']
     del writer_counter_dict['N/A']
-    unique_concept = [k for k, v in writer_counter_dict.items() if v > num_occs]
+    unique_concept = [k for k, v in writer_counter_dict.items() if v >= num_occs]
     concept_strs = [
-        ', '.join([concept for concept in concept_str.split(', ') if concept in unique_concept])
+        ','.join([concept for concept in concept_str.split(',') if concept in unique_concept])
         for concept_str in concept_strs
     ]
     df[concept_name] = concept_strs
@@ -109,7 +78,7 @@ def convert_2_data(
     num_nodes = num_users + num_items + num_genders + num_occupation + num_ages + num_genres + num_years + num_directors + num_actors + num_writers
     """
     def get_concept_num_from_str(df, concept_name):
-        concept_strs = [concept_str.split(', ') for concept_str in df[concept_name]]
+        concept_strs = [concept_str.split(',') for concept_str in df[concept_name]]
         concepts = set(itertools.chain.from_iterable(concept_strs))
         concepts.remove('')
         num_concepts = len(concepts)
@@ -144,62 +113,49 @@ def convert_2_data(
     num_node_types = 10
 
     #########################  Define entities to node id map  #########################
-    x = []
     nid2e = {}
     acc = 0
     uid2nid = {uid: i + acc for i, uid in enumerate(users['uid'])}
     for i, uid in enumerate(users['uid']):
         nid2e[i + acc] = ('uid', uid)
-    x += [[0] for _ in range(num_users)]
     acc += num_users
     iid2nid = {iid: i + acc for i, iid in enumerate(items['iid'])}
     for i, iid in enumerate(items['iid']):
         nid2e[i + acc] = ('iid', iid)
-    x += [[1] for _ in range(num_items)]
     acc += num_items
     gender2nid = {gender: i + acc for i, gender in enumerate(genders)}
     for i, gender in enumerate(genders):
         nid2e[i + acc] = ('gender', gender)
-    x += [[2] for _ in range(num_genders)]
     acc += num_genders
     occ2nid = {occupation: i + acc for i, occupation in enumerate(occupations)}
     for i, occ in enumerate(occupations):
         nid2e[i + acc] = ('occ', occ)
-    x += [[3] for _ in range(num_occupations)]
     acc += num_occupations
     age2nid = {age: i + acc for i, age in enumerate(ages)}
     for i, age in enumerate(ages):
         nid2e[i + acc] = ('age', age)
-    x += [[4] for _ in range(num_ages)]
     acc += num_ages
     genre2nid = {genre: i + acc for i, genre in enumerate(genres)}
     for i, genre in enumerate(genres):
         nid2e[i + acc] = ('genre', genre)
-    x += [[5] for _ in range(num_genres)]
     acc += num_genres
     year2nid = {year: i + acc for i, year in enumerate(years)}
     for i, year in enumerate(years):
         nid2e[i + acc] = ('year', year)
-    x += [[6] for _ in range(num_years)]
     acc += num_years
     director2nid = {director: i + acc for i, director in enumerate(unique_directors)}
     for i, director in enumerate(unique_directors):
         nid2e[i + acc] = ('director', director)
-    x += [[7] for _ in range(num_directors)]
     acc += num_directors
     actor2nid = {actor: i + acc for i, actor in enumerate(unique_actors)}
     for i, actor in enumerate(unique_actors):
         nid2e[i + acc] = ('actor', actor)
-    x += [[8] for _ in range(num_actors)]
     acc += num_actors
     writer2nid = {writer: i + acc for i, writer in enumerate(unique_writers)}
     for i, writer in enumerate(unique_writers):
         nid2e[i + acc] = ('writer', writer)
-    x += [[9] for _ in range(num_writers)]
     e2nid = {'uid': uid2nid, 'iid': iid2nid, 'gender': gender2nid, 'occ': occ2nid, 'age': age2nid, 'genre': genre2nid,
              'year': year2nid, 'director': director2nid, 'actor': actor2nid, 'writer': writer2nid}
-    x = torch.from_numpy(np.array(x))
-    x = torch.zeros(num_nodes, num_node_types).scatter(1, x.long(), 1)
 
     #########################  create graphs  #########################
     edge_index_nps = {}
@@ -221,7 +177,7 @@ def convert_2_data(
     year2user_edge_index_np = np.vstack((np.array(year_nids), np.array(i_nids)))
 
     directors_list = [
-        [director for director in directors.split(', ') if director != '']
+        [director for director in directors.split(',') if director != '']
         for directors in items.directors
     ]
     directors_nids = [[e2nid['director'][director] for director in directors] for directors in directors_list]
@@ -231,7 +187,7 @@ def convert_2_data(
     director2user_edge_index_np = np.vstack((np.array(directors_nids), np.array(d_i_nids)))
 
     actors_list = [
-        [actor for actor in actors.split(', ') if actor != '']
+        [actor for actor in actors.split(',') if actor != '']
         for actors in items.actors
     ]
     actor_nids = [[e2nid['actor'][actor] for actor in actors] for actors in actors_list]
@@ -241,7 +197,7 @@ def convert_2_data(
     actor2user_edge_index_np = np.vstack((np.array(actor_nids), np.array(a_i_nids)))
 
     writers_list = [
-        [writer for writer in writers.split(', ') if writer != '']
+        [writer for writer in writers.split(',') if writer != '']
         for writers in items.writers
     ]
     writer_nids = [[e2nid['writer'][writer] for writer in writers] for writers in writers_list]
@@ -255,7 +211,7 @@ def convert_2_data(
     edge_index_nps['writer2user'] = writer2user_edge_index_np
 
     kwargs = {
-        'x': x, 'num_nodes': num_nodes, 'num_node_types': num_node_types,
+        'num_nodes': num_nodes, 'num_node_types': num_node_types,
         'users': users, 'ratings': ratings, 'items': items,
         'e2nid': e2nid, 'nid2e': nid2e
     }
@@ -263,7 +219,6 @@ def convert_2_data(
     print('Creating rating property edges...')
     if train_ratio is not None:
         train_pos_unid_inid_map, test_pos_unid_inid_map, neg_unid_inid_map = {}, {}, {}
-        item_nid_occs = {}
 
         user2item_edge_index_np = np.zeros((2, 0))
         pbar = tqdm.tqdm(users.uid, total=users.uid.shape[0])
@@ -440,5 +395,10 @@ if __name__ == '__main__':
     name = '1m'
     seed = 2020
     dataset = MovieLens(root=root, name='1m', train_ratio=0.8, seed=seed)
+    for edge_index in dataset.data.edge_index_nps[0].values():
+        for edge in edge_index.T:
+            n1, n2 = edge
+            nid2e = dataset.data.nid2e[0]
+            print('{} {}   {} {}'.format(nid2e[n1][0], nid2e[n1][1], nid2e[n2][0], nid2e[n2][1]))
     print('stop')
 

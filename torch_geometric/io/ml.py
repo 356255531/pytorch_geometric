@@ -83,9 +83,9 @@ def read_ml(dir):
             except:
                 movie_info_dic = dict()
 
-        director = movie_info_dic.get('Director', '')
-        actor = movie_info_dic.get('Actors', '')
-        writer = movie_info_dic.get('Writer', '')
+        director = ','.join(movie_info_dic.get('Director', '').split(', '))
+        actor = ','.join(movie_info_dic.get('Actors', '').split(', '))
+        writer = ','.join([writer.split(' (')[0] for writer in movie_info_dic.get('Writer', '').split(', ')])
         # poster = movie_info_dic.get('Poster', None)
 
         directors_strs.append(director)

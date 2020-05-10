@@ -1,11 +1,11 @@
 import torch
 import torch.nn.functional as F
-from torch_geometric.nn import GCNConv
+from torch_geometric.nn import GATConv
 
 
-class GCN(torch.nn.Module):
-    def __init__(self, num_nodes, emb_dim, hidden_size, repr_dim, if_use_features, dropout):
-        super(GCN, self).__init__()
+class GAT(torch.nn.Module):
+    def __init__(self, num_nodes, num_heads, emb_dim, hidden_size, repr_dim, if_use_features, dropout):
+        super(GAT, self).__init__()
         self.num_nodes = num_nodes
         self.if_use_features = if_use_features
         self.dropout = dropout
@@ -13,8 +13,18 @@ class GCN(torch.nn.Module):
         if not self.if_use_features:
             self.x = torch.nn.Embedding(num_nodes, emb_dim, max_norm=1)
 
-        self.conv1 = GCNConv(emb_dim, hidden_size)
-        self.conv2 = GCNConv(hidden_size, repr_dim)
+        self.conv1 = GATConv(
+            emb_dim,
+            hidden_size,
+            heads=num_heads,
+            dropout=dropout
+        )
+        self.conv2 = GATConv(
+            hidden_size * num_heads,
+            repr_dim,
+            heads=1,
+            dropout=dropout
+        )
 
         self.reset_parameters()
 

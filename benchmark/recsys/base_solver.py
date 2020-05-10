@@ -6,6 +6,7 @@ import torch
 import time
 import pandas as pd
 import tqdm
+import itertools
 
 from utils import *
 
@@ -20,10 +21,11 @@ class BaseSolver(object):
         self.init_eval = train_args['init_eval']
 
     @abstractmethod
-    def prepare_model_input(self, data):
+    def prepare_model_input(self, data, if_use_features):
         """
-        Get the model input such as x or edge_index from torch_geometric.data
+
         :param data:
+        :param if_use_features:
         :return:
         """
         pass
@@ -144,11 +146,12 @@ class BaseSolver(object):
                     data = dataset.data.to(self.train_args['device'])
                     train_pos_unid_inid_map, test_pos_unid_inid_map, neg_unid_inid_map = \
                         data.train_pos_unid_inid_map[0], data.test_pos_unid_inid_map[0], data.neg_unid_inid_map[0]
-                    model_input = self.prepare_model_input(data)
+                    model_input = self.prepare_model_input(data, if_use_features=self.model_args['if_use_features'])
 
                     # Create model and optimizer
-                    self.model_args['emb_dim'] = data.num_node_types
-                    self.model_args['num_nodes'] = data.x.shape[0]
+                    if self.model_args['if_use_features']:
+                        self.model_args['emb_dim'] = data.x.shape[1]
+                    self.model_args['num_nodes'] = data.num_nodes[0]
                     model = self.model_class(**self.model_args).to(self.train_args['device'])
 
                     optimizer = torch.optim.Adam(
@@ -203,34 +206,28 @@ class BaseSolver(object):
                             train_bar = tqdm.tqdm(u_nids, total=len(u_nids))
                             for u_idx, u_nid in enumerate(train_bar):
                                 pos_i_nids = train_pos_unid_inid_map[u_nid]
-                                neg_i_nids = self.train_negative_sampling(
+                                train_neg_i_nids = self.train_negative_sampling(
                                     u_nid,
                                     train_pos_unid_inid_map, test_pos_unid_inid_map, neg_unid_inid_map,
                                     data
                                 )
+                                train_pos_i_nids = [pos_i_nids for _ in range(self.train_args['num_negative_samples'])]
+                                train_pos_i_nids = list(itertools.chain.from_iterable(train_pos_i_nids))
+                                train_u_nids = [u_nid for _ in range(len(pos_i_nids) * self.train_args['num_negative_samples'])]
 
-                                if len(pos_i_nids) == 0 or len(neg_i_nids) == 0:
+                                if len(train_pos_i_nids) == 0 or len(train_neg_i_nids) == 0:
                                     continue
-
-                                pos_i_nid_df = pd.DataFrame(
-                                    {'u_nid': [u_nid for _ in range(len(pos_i_nids))], 'pos_i_nid': pos_i_nids})
-                                neg_i_nid_df = pd.DataFrame(
-                                    {'u_nid': [u_nid for _ in range(len(neg_i_nids))], 'neg_i_nid': neg_i_nids})
-                                pos_neg_pair_np = pd.merge(pos_i_nid_df, neg_i_nid_df, how='inner', on='u_nid').to_numpy()
 
                                 propagated_node_emb = model(**model_input)
 
-                                u_node_emb = propagated_node_emb[pos_neg_pair_np[:, 0]]
-                                pos_i_node_emb = propagated_node_emb[pos_neg_pair_np[:, 1]]
-                                neg_i_node_emb = propagated_node_emb[pos_neg_pair_np[:, 2]]
+                                u_node_emb = propagated_node_emb[train_u_nids]
+                                pos_i_node_emb = propagated_node_emb[train_pos_i_nids]
+                                neg_i_node_emb = propagated_node_emb[train_neg_i_nids]
                                 pred_pos = (u_node_emb * pos_i_node_emb).sum(dim=1)
                                 pred_neg = (u_node_emb * neg_i_node_emb).sum(dim=1)
                                 loss = - (pred_pos - pred_neg).sigmoid().log().mean()
-                                try:
-                                    loss.backward()
-                                except:
-                                    import pdb
-                                    pdb.set_trace()
+
+                                loss.backward()
                                 optimizer.step()
                                 optimizer.zero_grad()
 
