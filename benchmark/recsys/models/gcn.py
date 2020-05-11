@@ -20,7 +20,7 @@ class GCN(torch.nn.Module):
 
     def reset_parameters(self):
         if not self.if_use_features:
-            torch.nn.init.uniform_(self.x.weight, -1.0, 1.0)
+            torch.nn.init.normal_(self.x.weight, -1.0, 1.0)
         self.conv1.reset_parameters()
         self.conv2.reset_parameters()
 

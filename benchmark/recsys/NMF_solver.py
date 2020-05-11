@@ -25,7 +25,7 @@ parser.add_argument("--hidden_mlp", type=int, default=8, help="")
 parser.add_argument("--layers", type=list, default=[16, 32, 16, 8], help="")
 # Train params
 parser.add_argument("--num_negative_samples", type=int, default=5, help="")
-parser.add_argument("--init_eval", type=bool, default=True, help="")
+parser.add_argument("--init_eval", type=bool, default=False, help="")
 
 parser.add_argument("--device", type=str, default='cuda', help="")
 parser.add_argument("--gpu_idx", type=str, default='0', help="")
@@ -79,8 +79,8 @@ print('train params: {}'.format(train_args))
 
 
 class NMFSolver(BaseMFSolver):
-    def __init__(self, GCN, dataset_args, model_args, train_args):
-        super(NMFSolver, self).__init__(GCN, dataset_args, model_args, train_args)
+    def __init__(self, model_class, dataset_args, model_args, train_args):
+        super(NMFSolver, self).__init__(model_class, dataset_args, model_args, train_args)
 
     def train_negative_sampling(self, u_nid, train_pos_unid_inid_map, test_pos_unid_inid_map, neg_unid_inid_map, data):
         """

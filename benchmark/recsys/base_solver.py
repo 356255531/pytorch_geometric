@@ -353,7 +353,8 @@ class BaseMFSolver(object):
             run,
             epoch,
             model,
-            train_pos_unid_inid_map, test_pos_unid_inid_map, neg_unid_inid_map
+            train_pos_unid_inid_map, test_pos_unid_inid_map, neg_unid_inid_map,
+            data
     ):
         """
         Compute the usual metrics for recommendation system (Hit rate, NDCG and AUC)
@@ -379,8 +380,8 @@ class BaseMFSolver(object):
             neg_i_nid_df = pd.DataFrame({'u_nid': [u_nid for _ in range(len(neg_i_nids))], 'neg_i_nid': neg_i_nids})
             pos_neg_pair_np = pd.merge(pos_i_nid_df, neg_i_nid_df, how='inner', on='u_nid').to_numpy()
             eval_u_nids = torch.from_numpy(pos_neg_pair_np[:, 0]).to(self.train_args['device'])
-            eval_pos_i_nids = torch.from_numpy(pos_neg_pair_np[:, 1]).to(self.train_args['device'])
-            eval_neg_i_nids = torch.from_numpy(pos_neg_pair_np[:, 2]).to(self.train_args['device'])
+            eval_pos_i_nids = torch.from_numpy(pos_neg_pair_np[:, 1]).to(self.train_args['device']) - data.e2nid[0]['iid'][0]
+            eval_neg_i_nids = torch.from_numpy(pos_neg_pair_np[:, 2]).to(self.train_args['device']) - data.e2nid[0]['iid'][0]
 
             pred_pos = model(eval_u_nids, eval_pos_i_nids)
             pred_neg = model(eval_u_nids, eval_neg_i_nids)
@@ -389,14 +390,14 @@ class BaseMFSolver(object):
 
             pos_u_nids_t = torch.from_numpy(np.array([u_nid for _ in range(len(pos_i_nids))])).to(self.train_args['device'])
             neg_u_nids_t = torch.from_numpy(np.array([u_nid for _ in range(len(neg_i_nids))])).to(self.train_args['device'])
-            pos_i_nids_t = torch.from_numpy(np.array(pos_i_nids)).to(self.train_args['device'])
-            neg_i_nids_t = torch.from_numpy(np.array(neg_i_nids)).to(self.train_args['device'])
-            pred_pos = model(pos_u_nids_t, pos_i_nids_t)
-            pred_neg = model(neg_u_nids_t, neg_i_nids_t)
+            pos_i_nids_t = torch.from_numpy(np.array(pos_i_nids)).to(self.train_args['device']) - data.e2nid[0]['iid'][0]
+            neg_i_nids_t = torch.from_numpy(np.array(neg_i_nids)).to(self.train_args['device']) - data.e2nid[0]['iid'][0]
+            pred_pos = model(pos_u_nids_t, pos_i_nids_t).reshape(-1)
+            pred_neg = model(neg_u_nids_t, neg_i_nids_t).reshape(-1)
             _, indices = torch.sort(torch.cat([pred_pos, pred_neg]), descending=True)
             hit_vec = (indices < len(pos_i_nids)).cpu().detach().numpy()
-            pred_pos = pred_pos.cpu().detach().numpy()
-            pred_neg = pred_neg.cpu().detach().numpy()
+            pred_pos = pred_pos.detach().cpu().numpy()
+            pred_neg = pred_neg.detach().cpu().numpy()
 
             HRs = np.vstack([HRs, hit(hit_vec)])
             NDCGs = np.vstack([NDCGs, ndcg(hit_vec)])
@@ -469,7 +470,8 @@ class BaseMFSolver(object):
                             run,
                             start_epoch,
                             model,
-                            train_pos_unid_inid_map, test_pos_unid_inid_map, neg_unid_inid_map
+                            train_pos_unid_inid_map, test_pos_unid_inid_map, neg_unid_inid_map,
+                            data
                         )
                         print(
                             'Initial performance HR@10: {:.4f}, NDCG@10: {:.4f}, '
@@ -504,9 +506,9 @@ class BaseMFSolver(object):
                                 train_pos_i_nids = [pos_i_nids for _ in range(self.train_args['num_negative_samples'])]
                                 train_pos_i_nids = list(itertools.chain.from_iterable(train_pos_i_nids))
                                 train_u_nids = [u_nid for _ in range(len(pos_i_nids) * self.train_args['num_negative_samples'])]
-                                train_u_nids = torch.from_numpy(np.array(train_u_nids)).to(self.train_args['device'])
-                                train_pos_i_nids = torch.from_numpy(np.array(train_pos_i_nids)).to(self.train_args['device']) - data.e2nid[0]['iid'][0]
-                                train_neg_i_nids = torch.from_numpy(np.array(train_neg_i_nids)).to(self.train_args['device']) - data.e2nid[0]['iid'][0]
+                                train_u_nids = torch.from_numpy(np.array(train_u_nids)).long().to(self.train_args['device'])
+                                train_pos_i_nids = torch.from_numpy(np.array(train_pos_i_nids)).long().to(self.train_args['device']) - data.e2nid[0]['iid'][0]
+                                train_neg_i_nids = torch.from_numpy(np.array(train_neg_i_nids)).long().to(self.train_args['device']) - data.e2nid[0]['iid'][0]
 
                                 pred_pos = model(train_u_nids, train_pos_i_nids)
                                 pred_neg = model(train_u_nids, train_neg_i_nids)
@@ -527,7 +529,8 @@ class BaseMFSolver(object):
                                 run,
                                 epoch,
                                 model,
-                                train_pos_unid_inid_map, test_pos_unid_inid_map, neg_unid_inid_map
+                                train_pos_unid_inid_map, test_pos_unid_inid_map, neg_unid_inid_map,
+                                data
                             )
                             HRs_per_epoch_np = np.vstack([HRs_per_epoch_np, HRs])
                             NDCGs_per_epoch_np = np.vstack([NDCGs, HRs])

@@ -21,6 +21,17 @@ class NMF(torch.nn.Module):
         self.affine_output = torch.nn.Linear(in_features=layers[-1] + hidden_mf, out_features=1)
         self.logistic = torch.nn.Sigmoid()
 
+        self.reset_parameters()
+
+    def reset_parameters(self):
+        torch.nn.init.normal_(self.embedding_user_mlp.weight, -1, 1)
+        torch.nn.init.normal_(self.embedding_user_mf.weight, -1, 1)
+        torch.nn.init.normal_(self.embedding_item_mf.weight, -1, 1)
+        torch.nn.init.normal_(self.embedding_item_mf.weight, -1, 1)
+        for layer in self.fc_layers:
+            torch.nn.init.normal_(layer.weight, -1, 1)
+        torch.nn.init.normal_(self.affine_output.weight, -1, 1)
+
     def forward(self, user_indices, item_indices):
         user_embedding_mlp = self.embedding_user_mlp(user_indices)
         item_embedding_mlp = self.embedding_item_mlp(item_indices)
@@ -39,5 +50,3 @@ class NMF(torch.nn.Module):
         rating = self.logistic(logits)
         return rating
 
-    def init_weight(self):
-        pass
