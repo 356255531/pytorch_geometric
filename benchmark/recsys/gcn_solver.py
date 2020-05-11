@@ -4,12 +4,12 @@ import os
 import numpy as np
 import random as rd
 
-from models import PAGAGCN
+from models import GCN
 from utils import get_folder_path
 from base_solver import BaseSolver
 
 
-MODEL = 'PAGAGCN'
+MODEL = 'GCN'
 
 parser = argparse.ArgumentParser()
 # Dataset params
@@ -20,19 +20,16 @@ parser.add_argument("--num_core", type=int, default=10, help="")
 parser.add_argument("--num_feat_core", type=int, default=10, help="")
 parser.add_argument("--train_ratio", type=float, default=0.8, help="")
 # Model params
-parser.add_argument("--meta_path_steps", type=list, default=[2], help="")
 parser.add_argument("--dropout", type=float, default=0.5, help="")
 parser.add_argument("--emb_dim", type=int, default=64, help="")
 parser.add_argument("--repr_dim", type=int, default=16, help="")
 parser.add_argument("--hidden_size", type=int, default=64, help="")
-parser.add_argument("--aggr", type=str, default='concat', help="")
-
 # Train params
 parser.add_argument("--num_negative_samples", type=int, default=5, help="")
 parser.add_argument("--init_eval", type=bool, default=True, help="")
 
 parser.add_argument("--device", type=str, default='cuda', help="")
-parser.add_argument("--gpu_idx", type=str, default='2', help="")
+parser.add_argument("--gpu_idx", type=str, default='0', help="")
 parser.add_argument("--runs", type=int, default=100, help="")
 parser.add_argument("--epochs", type=int, default=100, help="")
 parser.add_argument("--opt", type=str, default='adam', help="")
@@ -65,10 +62,9 @@ dataset_args = {
     'train_ratio': args.train_ratio
 }
 model_args = {
-    'meta_path_steps': args.meta_path_steps, 'aggr': args.aggr,
     'if_use_features': args.if_use_features,
     'emb_dim': args.emb_dim, 'hidden_size': args.hidden_size,
-    'repr_dim': args.repr_dim
+    'repr_dim': args.repr_dim, 'dropout': args.dropout
 }
 train_args = {
     'init_eval': args.init_eval, 'num_negative_samples': args.num_negative_samples,
@@ -84,21 +80,16 @@ print('task params: {}'.format(model_args))
 print('train params: {}'.format(train_args))
 
 
-class PAGAGCNSolver(BaseSolver):
-    def __init__(self, model_class, dataset_args, model_args, train_args):
-        super(PAGAGCNSolver, self).__init__(model_class, dataset_args, model_args, train_args)
+class GCNSolver(BaseSolver):
+    def __init__(self, GCN, dataset_args, model_args, train_args):
+        super(GCNSolver, self).__init__(GCN, dataset_args, model_args, train_args)
 
     def prepare_model_input(self, data, if_use_features=False):
-        user2item_np = data.edge_index_nps[0]['user2item']
-        item2user_np = np.flip(user2item_np, 0).copy()
-        user2item_t = torch.from_numpy(user2item_np).long().to(self.train_args['device'])
-        item2user_t = torch.from_numpy(item2user_np).long().to(self.train_args['device'])
+        edge_index_np = np.hstack(data.edge_index_nps[0].values())
+        edge_index_np = np.hstack([edge_index_np, np.flip(edge_index_np, 0)])
+        edge_index = torch.from_numpy(edge_index_np).long().to(self.train_args['device'])
 
-        meta_path_edge_index_1 = [user2item_t, item2user_t]
-        meta_path_edge_index_2 = [item2user_t, user2item_t]
-
-
-        kwargs = {'meta_path_edge_index_list': [meta_path_edge_index_1, meta_path_edge_index_2]}
+        kwargs = {'edge_index': edge_index}
         if if_use_features:
             kwargs['x'] = data.x
 
@@ -133,5 +124,5 @@ class PAGAGCNSolver(BaseSolver):
 
 
 if __name__ == '__main__':
-    solver = PAGAGCNSolver(PAGAGCN, dataset_args, model_args, train_args)
+    solver = GCNSolver(GCN, dataset_args, model_args, train_args)
     solver.run()
